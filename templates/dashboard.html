@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .chart-container {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{ title }}</h1>
+
+    {% for chart_id in chart_ids %}
+    <div id="{{ chart_id }}" class="chart-container"></div>
+    {% endfor %}
+
+    <script>
+        {% for i in range(figures|length) %}
+        var fig{{ i }} = {{ figures[i]|safe }};
+        Plotly.newPlot('{{ chart_ids[i] }}', fig{{ i }}.data, fig{{ i }}.layout);
+        {% endfor %}
+    </script>
+</body>
+</html>
