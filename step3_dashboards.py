@@ -21,20 +21,43 @@ from core.config import get_config
 
 
 def render_dashboard_html(title, figures, chart_ids, output_path):
-    """Jinja2 템플릿을 사용하여 대시보드 HTML 생성"""
-    env = Environment(loader=FileSystemLoader('templates'))
-    template = env.get_template('dashboard.html')
+    """여러 Plotly figure를 하나의 HTML로 생성"""
 
-    # Figure를 JSON으로 변환
-    figures_json = [fig.to_json() for fig in figures]
-
-    html_content = template.render(
-        title=title,
-        figures=figures_json,
-        chart_ids=chart_ids,
-        enumerate=enumerate
+    # 첫 번째 figure를 full HTML로 저장
+    figures[0].write_html(
+        output_path,
+        include_plotlyjs='cdn',
+        div_id=chart_ids[0],
+        config={'responsive': True}
     )
 
+    # HTML을 읽어서 수정
+    with open(output_path, 'r', encoding='utf-8') as f:
+        html_content = f.read()
+
+    # Title 수정
+    html_content = html_content.replace('<title>Plotly</title>', f'<title>{title}</title>')
+
+    # h1 태그 추가 (body 태그 다음에)
+    html_content = html_content.replace(
+        '<body>',
+        f'<body>\n    <h1 style="text-align: center; color: #333;">{title}</h1>'
+    )
+
+    # 나머지 figure들을 추가
+    for i in range(1, len(figures)):
+        # 각 figure를 임시로 저장
+        temp_html = figures[i].to_html(
+            include_plotlyjs=False,
+            div_id=chart_ids[i],
+            full_html=False,
+            config={'responsive': True}
+        )
+
+        # </body> 태그 앞에 추가
+        html_content = html_content.replace('</body>', f'{temp_html}\n</body>')
+
+    # 저장
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
 
