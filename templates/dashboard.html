@@ -1,9 +1,11 @@
-<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>{{ title }}</title>
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script type="text/javascript">
+        window.PlotlyConfig = {MathJaxConfig: 'local'};
+    </script>
+    <script charset="utf-8" src="https://cdn.plot.ly/plotly-3.3.0.min.js" integrity="sha256-bO3dS6yCpk9aK4gUpNELtCiDeSYvGYnK7jFI58NQnHI=" crossorigin="anonymous">
+    </script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -17,19 +19,18 @@
             margin: 20px 0;
         }
     </style>
+    <title>{{ title }}</title>
 </head>
 <body>
     <h1>{{ title }}</h1>
-
-    {% for chart_id in chart_ids %}
-    <div id="{{ chart_id }}" class="chart-container"></div>
-    {% endfor %}
-
-    <script>
+    
+    {% if figures %}
+    <div id="figures">                            
         {% for i in range(figures|length) %}
-        var fig{{ i }} = {{ figures[i]|safe }};
-        Plotly.newPlot('{{ chart_ids[i] }}', fig{{ i }}.data, fig{{ i }}.layout);
+        {{ figures[i]|safe }};
         {% endfor %}
-    </script>
+    </div>
+    {% endif %}
+
 </body>
 </html>

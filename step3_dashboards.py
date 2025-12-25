@@ -19,48 +19,31 @@ import networkx as nx
 from jinja2 import Environment, FileSystemLoader
 from core.config import get_config
 
+# 템플릿 파일이 있는 디렉토리 설정
+file_loader = FileSystemLoader('templates')
+env = Environment(loader=file_loader)
+template = env.get_template('dashboard.html')
 
 def render_dashboard_html(title, figures, chart_ids, output_path):
     """여러 Plotly figure를 하나의 HTML로 생성"""
 
     # 첫 번째 figure를 full HTML로 저장
-    figures[0].write_html(
-        output_path,
-        include_plotlyjs='cdn',
-        div_id=chart_ids[0],
-        config={'responsive': True}
-    )
+    figures_html = [
+        e.to_html(full_html=False, include_plotlyjs=False, div_id=chart_ids[i], config={'responsive': True}) 
+        for i, e in enumerate(figures)
+    ]
 
-    # HTML을 읽어서 수정
-    with open(output_path, 'r', encoding='utf-8') as f:
-        html_content = f.read()
+    render_data = {
+        'title': title,
+        'figures': figures_html
+    }
 
-    # Title 수정
-    html_content = html_content.replace('<title>Plotly</title>', f'<title>{title}</title>')
-
-    # h1 태그 추가 (body 태그 다음에)
-    html_content = html_content.replace(
-        '<body>',
-        f'<body>\n    <h1 style="text-align: center; color: #333;">{title}</h1>'
-    )
-
-    # 나머지 figure들을 추가
-    for i in range(1, len(figures)):
-        # 각 figure를 임시로 저장
-        temp_html = figures[i].to_html(
-            include_plotlyjs=False,
-            div_id=chart_ids[i],
-            full_html=False,
-            config={'responsive': True}
-        )
-
-        # </body> 태그 앞에 추가
-        html_content = html_content.replace('</body>', f'{temp_html}\n</body>')
+    # 템플릿 렌더링
+    html_content = template.render(render_data)
 
     # 저장
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
-
 
 def load_data():
     """JSON 파일에서 데이터 로드 (fast fail)"""
