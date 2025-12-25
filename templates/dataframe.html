@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; font-size: 12px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: right; }
+        th { background-color: #4CAF50; color: white; position: sticky; top: 0; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        .index { text-align: left; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>{{title}}</h1>
+    <p>생성일시: {{date}}</p>
+    <p>Shape: {{n_row}} rows × {{n_col}} columns</p>
+{df.to_html(classes='data-table', float_format=lambda x: f'{x:.{float_precision}f}' if abs(x) < large_threshold else f'{x:.{large_precision}f}')}
+</body>
+</html>

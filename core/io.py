@@ -9,7 +9,7 @@ import os
 from core.config import get_config
 
 
-def get_krx300_list(trade_date=None):
+def _get_krx300_list(trade_date=None):
     """
     KRX300 종목 리스트를 KRX API에서 가져옵니다.
     """
@@ -20,10 +20,12 @@ def get_krx300_list(trade_date=None):
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201010105',
+        'Referer': 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201010101',
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'X-Requested-With': 'XMLHttpRequest'
+        'X-Requested-With': 'XMLHttpRequest',
+        'Origin': 'https://data.krx.co.kr',
+        'Dnt': '1'
     }
 
     payload = {
@@ -42,6 +44,8 @@ def get_krx300_list(trade_date=None):
     response = requests.post(url, headers=headers, data=payload)
     response.raise_for_status()
     data = response.json()
+    
+    print( data )  # for debugging
 
     if 'output' in data:
         return pd.DataFrame(data['output'])
@@ -51,18 +55,11 @@ def get_krx300_list(trade_date=None):
 
 def get_list(index_name='KRX300', trade_date=None):
     """지수 구성 종목 리스트를 가져옵니다."""
-    if index_name != 'KRX300':
-        raise ValueError(f"Unsupported index: {index_name}")
-
-    df = get_krx300_list(trade_date)
-
-    if 'ISU_SRT_CD' in df.columns:
-        return df['ISU_SRT_CD'].tolist()
-    elif 'ISU_CD' in df.columns:
-        return df['ISU_CD'].tolist()
+    if index_name == 'KRX300':
+        df = _get_krx300_list(trade_date)
     else:
-        raise ValueError("Could not find ticker column in response")
-
+        raise ValueError(f"Unsupported index: {index_name}")
+    return df
 
 def _download_single_ticker(ticker, start_date, end_date, data_source=None):
     """단일 종목 다운로드 (병렬 처리용)"""
@@ -126,11 +123,9 @@ def get_price(tickers, start_date=None, end_date=None):
         print("순차 다운로드 모드")
 
         for ticker in tqdm(tickers, desc="Downloading"):
-            ticker_with_source = f'{data_source}:{ticker}' if data_source else ticker
             try:
-                df = fdr.DataReader(ticker_with_source, start_date, end_date)
-                if not df.empty:
-                    df.columns = [col.lower() for col in df.columns]
+                ticker, df = _download_single_ticker(ticker, start_date, end_date, data_source)
+                if df:
                     price_data[ticker] = df
             except Exception:
                 continue

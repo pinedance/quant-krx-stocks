@@ -12,7 +12,12 @@ from core.utils import date_before
 from core.finance import annualize, get_corrMatrix
 from core.models import LM
 from core.config import get_config
+from jinja2 import Environment, FileSystemLoader
 
+# 템플릿 파일이 있는 디렉토리 설정
+file_loader = FileSystemLoader('templates')
+env = Environment(loader=file_loader)
+template = env.get_template('dataframe.html')
 
 def export_dataframe_to_formats(df, base_path, name):
     """DataFrame을 HTML, TSV, JSON 형식으로 저장"""
@@ -26,27 +31,13 @@ def export_dataframe_to_formats(df, base_path, name):
     large_threshold = get_config('output.html.large_number_threshold', 1000)
 
     # HTML
-    html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>{name}</title>
-    <style>
-        table {{ border-collapse: collapse; width: 100%; font-size: 12px; }}
-        th, td {{ border: 1px solid #ddd; padding: 6px; text-align: right; }}
-        th {{ background-color: #4CAF50; color: white; position: sticky; top: 0; }}
-        tr:nth-child(even) {{ background-color: #f2f2f2; }}
-        .index {{ text-align: left; font-weight: bold; }}
-    </style>
-</head>
-<body>
-    <h1>{name}</h1>
-    <p>생성일시: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-    <p>Shape: {df.shape[0]} rows × {df.shape[1]} columns</p>
-{df.to_html(classes='data-table', float_format=lambda x: f'{x:.{float_precision}f}' if abs(x) < large_threshold else f'{x:.{large_precision}f}')}
-</body>
-</html>"""
-
+    render_data = {
+        "title": name,
+        "date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "n_row": df.shape[0],
+        "n_col": df.shape[1]
+    }
+    html_content = template.render(render_data)
     html_path = f"{base_path}.html"
     with open(html_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
