@@ -16,7 +16,7 @@ template = env.get_template('list.html')
 
 def export_to_html(df, filepath):
     render_data = {
-        "title": "KRX300 종목 리스트",
+        "title": "KRX top300 종목 리스트",
         "date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "dataframe": df.to_html(index=False, escape=False)
     }
@@ -52,7 +52,7 @@ def main():
 
     # KRX300 종목 리스트 가져오기
     print("\nKRX300 종목 리스트를 가져오는 중...")
-    df = get_list('KRX300')
+    df = get_list('KRX-top300')
 
     if df.empty:
         print("종목 리스트를 가져오는데 실패했습니다.")

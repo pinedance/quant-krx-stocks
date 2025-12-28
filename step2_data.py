@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from core.io import get_list, get_price
 from core.utils import date_before
-from core.finance import annualize, get_corrMatrix
+from core.finance import annualize_rt, stdev, dsdev, get_corrMatrix
 from core.models import LM
 from core.config import get_config
 from jinja2 import Environment, FileSystemLoader
@@ -77,7 +77,7 @@ def main():
 
     # 1. KRX300 종목 리스트
     print("\n[1/7] KRX300 종목 리스트 가져오기...")
-    tickers = get_list('KRX300')
+    tickers = get_list('KRX-top300')
     print(f"      총 {len(tickers)}개 종목")
 
     # 종목 수 제한
@@ -90,22 +90,18 @@ def main():
     start_date = date_before(years=start_years)
     print(f"      시작일: {start_date}")
 
-    price_data = get_price(tickers, start_date=start_date)
-    print(f"      {len(price_data)}개 종목 데이터 다운로드 완료")
+    tickers_lst = tickers['Code'].to_list()
+    closeD = get_price(tickers_lst, start_date=start_date)
+    print(f"      다운로드 완료 | 종목(열): {len(closeD.shape[1])}, 날짜(행): {len(closeD.shape[0])}")
 
     # 3. Daily/Monthly Price DataFrame
-    print("\n[3/7] Price DataFrame 생성...")
-
-    # DataFrame 생성 (최적화: concat 사용)
-    close_series = {
-        ticker: df['close']
-        for ticker, df in price_data.items()
-        if 'close' in df.columns
-    }
-    closeD = pd.DataFrame(close_series)
-
+    print("\n[3/7] Monthly Price DataFrame 생성...")
     closeM = closeD.resample('ME').last()  # 'M' → 'ME' (Month End)
-    closeM_log = np.log(closeM.replace(0, np.nan))  # 0 방지
+    # print(closeM.shape)
+    closeM.dropna(axis=1, how='any', inplace=True)
+    # print(closeM.shape)
+    # closeM_log = np.log(closeM.replace(0, np.nan))  # 0 방지
+    closeM_log = np.log(closeM)
 
     print(f"      Daily:  {closeD.shape}")
     print(f"      Monthly: {closeM.shape}")
@@ -123,7 +119,7 @@ def main():
     # Linear Regression (설정에서 가져온 periods 사용)
     for period in periods:
         LR = LM().fit(closeM_log, period)
-        mmtM[f'AS{period}'] = annualize(LR.slope, period, 'M')
+        mmtM[f'AS{period}'] = ( np.exp(LR.slope * 12) - 1 )  # Monthly
         mmtM[f'RS{period}'] = LR.score
 
     print(f"      완료: {mmtM.shape}")
@@ -135,21 +131,15 @@ def main():
     for period in periods:
         if len(closeM) >= period:
             # Annualized Return
-            returns = (closeM.iloc[-1] / closeM.iloc[-period]) ** (12/period) - 1
-            pfmM[f'AR{period}'] = returns
+            returns = closeM.pct_change(periods=period).iloc[-1]
+            annualized_returns = annualize_rt(returns, period, 'M')
+            pfmM[f'AR{period}'] = annualized_returns
 
             # Standard Deviation
-            std = closeM.iloc[-period:].pct_change().std(ddof=1) * np.sqrt(12)
-            pfmM[f'SD{period}'] = std
+            pfmM[f'SD{period}'] = stdev(closeM, period)
 
             # Downside Deviation (개선된 계산)
-            returns_series = closeM.iloc[-period:].pct_change()
-            dd_result = pd.Series(index=closeM.columns, dtype=float)
-            for col in returns_series.columns:
-                col_returns = returns_series[col].dropna()
-                downside = col_returns[col_returns < 0]
-                dd_result[col] = downside.std(ddof=1) * np.sqrt(12) if len(downside) > 1 else np.nan
-            pfmM[f'DD{period}'] = dd_result
+            pfmM[f'DD{period}'] = dsdev(closeM, period)
 
     print(f"      완료: {pfmM.shape}")
 

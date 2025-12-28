@@ -4,9 +4,11 @@
 data:
   start_years: 6  # 몇 년치 데이터를 가져올지
   ticker_limit: null  # 종목 수 제한 (null이면 전체, 테스트 시 50 등)
+  # ticker_limit: 8  # 종목 수 제한 (null이면 전체, 테스트 시 50 등)
 
   # 다운로드 방식 (worker 수는 CPU 코어 수로 자동 설정)
-  parallel_downloads: true  # 병렬 다운로드 사용 여부
+  # download_method: batch  # 예: parallel, batch, onebyone
+  download_method: parallel  # 예: parallel, batch, onebyone
 
   # 데이터 소스 (KRX, NAVER, YAHOO, null=자동)
   data_source: null  # 예: "KRX", "NAVER", "YAHOO" 또는 null

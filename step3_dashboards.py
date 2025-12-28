@@ -403,8 +403,8 @@ def create_correlation_network(correlation):
     layout_seed = get_config('visualization.correlation_network.layout_seed', 42)
     layout_k = get_config('visualization.correlation_network.layout_k', 0.5)
 
-    # marginal_sum 제거하고 실제 종목들만
-    corr_matrix = correlation.drop('marginal_sum', axis=0).drop('marginal_sum', axis=1)
+    # marginal_mean 제거하고 실제 종목들만
+    corr_matrix = correlation.drop('mean', axis=0).drop('mean', axis=1)
     tickers = corr_matrix.index.tolist()
 
     # NetworkX 그래프 생성
@@ -456,7 +456,7 @@ def create_correlation_network(correlation):
     }
 
     # 노드 추가
-    marginal_sums = correlation.loc[tickers, 'marginal_sum']
+    marginal_means = correlation.loc[tickers, 'mean']
     for ticker in tickers:
         vos_data["network"]["items"].append({
             "id": ticker,
@@ -465,7 +465,7 @@ def create_correlation_network(correlation):
             "y": float(pos[ticker][1]),
             "cluster": node_to_cluster.get(ticker, 1),
             "weights": {
-                "correlation_sum": float(marginal_sums[ticker])
+                "correlation_sum": float(marginal_means[ticker])
             }
         })
 
@@ -539,7 +539,7 @@ def create_correlation_network(correlation):
 
     <h2>주의사항</h2>
     <ul>
-        <li>노드 크기는 marginal_sum (다른 종목들과의 상관관계 합계)을 반영합니다</li>
+        <li>노드 크기는 marginal_mean (다른 종목들과의 상관관계 합계)을 반영합니다</li>
         <li>클러스터는 modularity maximization 알고리즘으로 자동 감지되었습니다</li>
         <li>VOSviewer에서 zoom, pan, 클러스터 색상 등을 조정할 수 있습니다</li>
         <li>Threshold를 조정하려면 settings.yaml 파일을 수정하세요</li>
@@ -560,8 +560,8 @@ def create_correlation_cluster(correlation):
     width = get_config('visualization.dashboard.width', 1000)
     height_per_item = get_config('visualization.dashboard.dendrogram_height_per_item', 15)
 
-    # marginal_sum 제거
-    corr_matrix = correlation.drop('marginal_sum', axis=0).drop('marginal_sum', axis=1)
+    # marginal_mean 제거
+    corr_matrix = correlation.drop('mean', axis=0).drop('mean', axis=1)
 
     # 상관계수를 거리로 변환 (1 - correlation)
     distance_matrix = 1 - corr_matrix

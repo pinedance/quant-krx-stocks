@@ -8,55 +8,14 @@ from tqdm import tqdm
 import os
 from core.config import get_config
 
+def _get_krx_top300_list(trade_date=None):
+    cols = ["Code", "ISU_CD", "Name", "Market", "Volume", "Amount", "Marcap", "Stocks", "MarketId"]
+    return fdr.StockListing("KRX")[cols].sort_values(by='Marcap', ascending=False)[:300]
 
-def _get_krx300_list(trade_date=None):
-    """
-    KRX300 종목 리스트를 KRX API에서 가져옵니다.
-    """
-    if trade_date is None:
-        trade_date = datetime.now().strftime('%Y%m%d')
-
-    url = "https://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd"
-
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Referer': 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201010101',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Origin': 'https://data.krx.co.kr',
-        'Dnt': '1'
-    }
-
-    payload = {
-        'bld': 'dbms/MDC/STAT/standard/MDCSTAT00601',
-        'locale': 'ko_KR',
-        'tboxindIdx_finder_equidx0_1': 'KRX 300',
-        'indIdx': '5',
-        'indIdx2': '300',
-        'codeNmindIdx_finder_equidx0_1': 'KRX 300',
-        'param1indIdx_finder_equidx0_1': '',
-        'trdDd': trade_date,
-        'money': '3',
-        'csvxls_isNo': 'false'
-    }
-
-    response = requests.post(url, headers=headers, data=payload)
-    response.raise_for_status()
-    data = response.json()
-    
-    print( data )  # for debugging
-
-    if 'output' in data:
-        return pd.DataFrame(data['output'])
-    else:
-        raise ValueError("No data found in response")
-
-
-def get_list(index_name='KRX300', trade_date=None):
+def get_list(index_name='KRX-top300', trade_date=None):
     """지수 구성 종목 리스트를 가져옵니다."""
-    if index_name == 'KRX300':
-        df = _get_krx300_list(trade_date)
+    if index_name == 'KRX-top300':
+        df = _get_krx_top300_list(trade_date)
     else:
         raise ValueError(f"Unsupported index: {index_name}")
     return df
@@ -97,31 +56,36 @@ def get_price(tickers, start_date=None, end_date=None):
         end_date = datetime.now().strftime('%Y-%m-%d')
 
     # 설정 로드
-    use_parallel = get_config('data.parallel_downloads', True)
+    download_method = get_config('data.download_method', "parallel")
     data_source = get_config('data.data_source', None)
     max_workers = os.cpu_count()
 
+    if (download_method == "batch") or (download_method == "parallel" and len(tickers) <= 10):
+        print("      배치 다운로드 모드")
+        tickers_str = ",".join(tickers)
+        df = fdr.DataReader(tickers_str, start_date, end_date)
+        if not df.empty:
+            df.columns = [col.lower() for col in df.columns]
+        # print(df)
+        closeD = df
+        return closeD
+
     price_data = {}
-
     # 병렬 다운로드
-    if use_parallel and len(tickers) > 5:
-        print(f"병렬 다운로드 모드 (workers={max_workers})")
-
+    if download_method == "parallel" and len(tickers) > 10:
+        print(f"      병렬 다운로드 모드 (workers={max_workers})")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
                 executor.submit(_download_single_ticker, ticker, start_date, end_date, data_source): ticker
                 for ticker in tickers
             }
-
             for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading"):
                 ticker, df = future.result()
                 if df is not None:
                     price_data[ticker] = df
-
     # 순차 다운로드
     else:
-        print("순차 다운로드 모드")
-
+        print("      순차 다운로드 모드")
         for ticker in tqdm(tickers, desc="Downloading"):
             try:
                 ticker, df = _download_single_ticker(ticker, start_date, end_date, data_source)
@@ -130,4 +94,11 @@ def get_price(tickers, start_date=None, end_date=None):
             except Exception:
                 continue
 
-    return price_data
+    close_series = {
+        ticker: df['close']
+        for ticker, df in price_data.items()
+        if 'close' in df.columns
+    }
+    closeD = pd.DataFrame(close_series)
+
+    return closeD

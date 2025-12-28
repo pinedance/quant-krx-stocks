@@ -29,14 +29,14 @@ def rt(prices, periods):
         return (prices[-1] / prices[-periods-1]) - 1
 
 
-def annualize(value, periods, period_type='M'):
+def annualize_rt(rt, periods, period_type='M'):
     """
     값을 연율화합니다.
 
     Parameters:
     -----------
-    value : float or pd.Series
-        연율화할 값
+    rt : float or pd.Series
+        연율화할 값(return)
     periods : int
         기간
     period_type : str
@@ -56,7 +56,7 @@ def annualize(value, periods, period_type='M'):
     else:
         raise ValueError(f"Unknown period_type: {period_type}")
 
-    return value * factor
+    return ( (rt + 1) ** factor ) - 1
 
 
 def stdev(prices, periods):
@@ -142,14 +142,15 @@ def get_corrMatrix(prices, periods):
     if not isinstance(prices, pd.DataFrame):
         raise ValueError("prices must be DataFrame")
 
+    ncol = len(prices.columns)
+
     # 최근 periods 기간의 수익률 계산
     returns = prices.pct_change().iloc[-periods:]
 
     # 상관계수 행렬 계산
     corr_matrix = returns.corr()
-
-    # marginal sum 추가 (각 종목의 다른 종목들과의 상관계수 합)
-    corr_matrix['marginal_sum'] = corr_matrix.sum(axis=1) - 1  # 자기 자신과의 상관계수 1 제외
-    corr_matrix.loc['marginal_sum'] = corr_matrix.sum(axis=0) - 1
+    # marginal mean 추가 (각 종목의 다른 종목들과의 상관계수 평균, 자기 자신 제외)
+    corr_matrix['mean'] = (corr_matrix.sum(axis=1) - 1) / (ncol-1)
+    corr_matrix.loc['mean'] = (corr_matrix.sum(axis=0) - 1) / (ncol-1)
 
     return corr_matrix
