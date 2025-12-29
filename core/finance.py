@@ -61,7 +61,7 @@ def annualize_rt(rt, periods, period_type='M'):
 
 def stdev(prices, periods):
     """
-    Standard Deviation (표준편차) 계산
+    Standard Deviation (표준편차) 계산 및 연율화
 
     Parameters:
     -----------
@@ -73,23 +73,25 @@ def stdev(prices, periods):
     Returns:
     --------
     float or pd.Series
-        표준편차
+        연율화된 표준편차
     """
     if isinstance(prices, pd.DataFrame):
         returns = prices.pct_change().iloc[-periods:]
-        return returns.std(ddof=1)
+        monthly_std = returns.std(ddof=1)
+        return monthly_std * np.sqrt(12)  # 연율화
     elif isinstance(prices, pd.Series):
         if len(prices) < periods + 1:
             return np.nan
         returns = prices.pct_change().iloc[-periods:]
-        return returns.std(ddof=1)
+        monthly_std = returns.std(ddof=1)
+        return monthly_std * np.sqrt(12)  # 연율화
     else:
         raise ValueError("prices must be DataFrame or Series")
 
 
 def dsdev(prices, periods):
     """
-    Downside Deviation (하방 편차) 계산
+    Downside Deviation (하방 편차) 계산 및 연율화
 
     Parameters:
     -----------
@@ -101,7 +103,7 @@ def dsdev(prices, periods):
     Returns:
     --------
     float or pd.Series
-        하방 편차
+        연율화된 하방 편차
     """
     if isinstance(prices, pd.DataFrame):
         returns = prices.pct_change().iloc[-periods:]
@@ -110,7 +112,10 @@ def dsdev(prices, periods):
         for col in returns.columns:
             col_returns = returns[col].dropna()
             downside = col_returns[col_returns < 0]
-            result[col] = downside.std(ddof=1) if len(downside) > 1 else np.nan
+            if len(downside) > 1:
+                result[col] = downside.std(ddof=1) * np.sqrt(12)  # 연율화
+            else:
+                result[col] = np.nan
         return result
 
     elif isinstance(prices, pd.Series):
@@ -118,7 +123,10 @@ def dsdev(prices, periods):
             return np.nan
         returns = prices.pct_change().iloc[-periods:].dropna()
         downside_returns = returns[returns < 0]
-        return downside_returns.std(ddof=1) if len(downside_returns) > 1 else np.nan
+        if len(downside_returns) > 1:
+            return downside_returns.std(ddof=1) * np.sqrt(12)  # 연율화
+        else:
+            return np.nan
     else:
         raise ValueError("prices must be DataFrame or Series")
 

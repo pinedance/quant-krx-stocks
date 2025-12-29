@@ -35,6 +35,7 @@ visualization:
     layout_k: 0.5  # spring layout k 파라미터
 
   dendrogram:  
+    method: ward
     height_per_item: 15  # Dendrogram 항목당 높이
 
 # Dashboard 크기

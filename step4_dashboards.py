@@ -447,7 +447,8 @@ def create_correlation_cluster(correlation):
     print("\n[4/4] Correlation Cluster Dendrogram 생성 중...")
 
     width = get_config('visualization.dashboard.width', 1000)
-    height_per_item = get_config('visualization.dashboard.dendrogram_height_per_item', 15)
+    height_per_item = get_config('visualization.dendrogram.height_per_item', 15)
+    cluster_method = get_config('visualization.dendrogram.method', 'ward')
 
     # marginal_mean 제거
     corr_matrix = correlation.drop('mean', axis=0).drop('mean', axis=1)
@@ -459,14 +460,14 @@ def create_correlation_cluster(correlation):
     condensed_dist = squareform(distance_matrix, checks=False)
 
     # Hierarchical clustering
-    linkage_matrix = linkage(condensed_dist, method='average')
+    linkage_matrix = linkage(condensed_dist, method=cluster_method)
 
     # Plotly dendrogram
     fig = ff.create_dendrogram(
         distance_matrix.values,
         orientation='left',
         labels=corr_matrix.index.tolist(),
-        linkagefun=lambda x: linkage(x, method='average')
+        linkagefun=lambda x: linkage(x, method=cluster_method)
     )
 
     height = max(800, len(corr_matrix) * height_per_item)
