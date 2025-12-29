@@ -6,6 +6,32 @@ STEP 1 → STEP 2 → STEP 3 → STEP 4 → STEP 5를 순차적으로 실행합�
 import subprocess
 import sys
 import time
+import shutil
+from pathlib import Path
+from core.config import settings
+from core.io import print_directory_tree
+
+
+def clean_output_directory():
+    """output 디렉토리 삭제 및 초기화"""
+    base_dir = Path(settings.output.base_dir)
+
+    if base_dir.exists():
+        print(f"기존 {base_dir} 디렉토리를 삭제합니다...")
+        shutil.rmtree(base_dir)
+        print(f"✓ {base_dir} 삭제 완료")
+
+    print(f"{base_dir} 디렉토리를 생성합니다...")
+    base_dir.mkdir(parents=True, exist_ok=True)
+    print(f"✓ {base_dir} 생성 완료")
+
+
+def print_output_results():
+    """생성된 결과물 디렉토리 트리 출력"""
+    base_dir = settings.output.base_dir
+
+    print("\n생성된 결과물:")
+    print_directory_tree(base_dir, prefix="", is_last=True)
 
 
 def run_step(step_name, script_name):
@@ -39,6 +65,10 @@ def main():
     print("  KRX300 프로젝트 전체 실행")
     print("=" * 70)
 
+    # output 디렉토리 초기화
+    print()
+    clean_output_directory()
+
     steps = [
         ("STEP 1: KRX300 종목 리스트 생성", "step1_list.py"),
         ("STEP 2: 가격 데이터 생성", "step2_price.py"),
@@ -65,29 +95,8 @@ def main():
     print(f"\n완료된 단계: {success_count}/{len(steps)}")
     print(f"총 소요 시간: {total_elapsed:.1f}초 ({total_elapsed/60:.1f}분)")
 
-    print("\n생성된 파일:")
-    print("  [STEP 1] output/list/")
-    print("    - KRX_list.{html,tsv,json}")
-    print("\n  [STEP 2] output/price/")
-    print("    - priceD.{html,tsv,json}")
-    print("    - priceM.{html,tsv,json}")
-    print("\n  [STEP 3] output/signal/")
-    print("    - momentum.{html,tsv,json}")
-    print("    - performance.{html,tsv,json}")
-    print("    - correlation.{html,tsv,json}")
-    print("\n  [STEP 4] output/dashboard/")
-    print("    - momentum.html")
-    print("    - performance.html")
-    print("    - correlation_network.html + .json (VOSviewer용)")
-    print("    - correlation_cluster.html")
-    print("\n  [STEP 5] output/")
-    print("    - index.html (모든 결과물 링크)")
-
-    print("\n다음 단계:")
-    print("  1. output/index.html을 브라우저로 열어서 모든 결과물 확인")
-    print("  2. Google Sheets에서 HTML table을 IMPORTHTML로 가져오기")
-    print("  3. VOSviewer로 correlation_network.json 열기")
-    print("  4. GitHub Pages나 웹 서버에 배포")
+    # 생성된 결과물 디렉토리 트리 출력
+    print_output_results()
 
 
 if __name__ == "__main__":

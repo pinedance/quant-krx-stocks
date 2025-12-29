@@ -2,11 +2,9 @@
 from jinja2 import Environment, FileSystemLoader
 import requests
 import json
-import json
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
-from datetime import datetime
 import FinanceDataReader as fdr
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
@@ -288,3 +286,41 @@ def render_dashboard_html(title, figures, chart_ids, output_path):
     # 저장
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
+
+
+def print_directory_tree(directory, prefix="", is_last=True):
+    """디렉토리 트리 구조 출력
+
+    Parameters:
+    -----------
+    directory : str or Path
+        출력할 디렉토리 경로
+    prefix : str
+        트리 구조 표현을 위한 prefix
+    is_last : bool
+        마지막 항목 여부
+    """
+    path = Path(directory)
+
+    if not path.exists():
+        return
+
+    # 현재 디렉토리/파일 출력
+    connector = "└── " if is_last else "├── "
+    print(f"{prefix}{connector}{path.name}/")
+
+    if path.is_dir():
+        # 하위 항목 가져오기 (디렉토리 먼저, 파일 나중)
+        items = sorted(path.iterdir(), key=lambda x: (not x.is_dir(), x.name))
+
+        for i, item in enumerate(items):
+            is_last_item = (i == len(items) - 1)
+            extension = "    " if is_last else "│   "
+
+            if item.is_dir():
+                # 하위 디렉토리 재귀 호출
+                print_directory_tree(item, prefix + extension, is_last_item)
+            else:
+                # 파일 출력
+                file_connector = "└── " if is_last_item else "├── "
+                print(f"{prefix}{extension}{file_connector}{item.name}")

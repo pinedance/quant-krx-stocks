@@ -2,7 +2,6 @@
 STEP 2: KRX300 데이터 생성 및 저장
 """
 
-import pandas as pd
 from core.io import import_dataframe_from_json, get_price, export_dataframe_to_formats
 from core.utils import date_before
 from core.config import settings
@@ -32,7 +31,6 @@ def main():
     print(f"\n[2/4] 가격 데이터 다운로드 ({price_periods}개월치)...")
     start_date = date_before(months=price_periods)
     print(f"      시작일: {start_date}")
-    print( tickers )
     tickers_lst = tickers['Code'].to_list()[:n_try]
     closeD = get_price(tickers_lst, start_date=start_date)
     print(f"      다운로드 완료 | 종목(열): {closeD.shape[1]}, 날짜(행): {closeD.shape[0]}")

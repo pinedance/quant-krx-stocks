@@ -19,24 +19,6 @@ from core.config import settings
 from core.io import import_dataframe_from_json, render_dashboard_html, render_html_from_template
 
 
-def create_scatter_traces(data, x_col, y_col, periods, colors, name_func, hover_func):
-    """Scatter plot trace 생성 (중복 코드 제거)"""
-    traces = []
-    for period, color in zip(periods, colors):
-        traces.append(
-            go.Scatter(
-                x=data[x_col.format(period=period)] if '{period}' in x_col else data[x_col],
-                y=data[y_col.format(period=period)] if '{period}' in y_col else data[y_col],
-                mode='markers',
-                marker=dict(size=8, color=color, opacity=0.6),
-                text=data.index,
-                hovertemplate=hover_func(period),
-                name=name_func(period)
-            )
-        )
-    return traces
-
-
 def create_momentum_dashboard(momentum):
     """Momentum 대시보드 생성 (독립된 플롯 2개를 하나의 HTML에)"""
     print("\n[1/4] Momentum Dashboard 생성 중...")
