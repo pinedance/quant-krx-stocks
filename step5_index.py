@@ -5,7 +5,7 @@ STEP 5: 결과물 인덱스 페이지 생성
 
 from pathlib import Path
 from datetime import datetime
-from core.config import get_config
+from core.config import settings
 from core.io import render_html_from_template
 
 
@@ -29,7 +29,7 @@ def scan_output_directory(base_dir):
                 {
                     'name': 'KRX_list',
                     'base': 'KRX_list',
-                    'description': f'{get_config("data.market", "KRX")} 전체 종목 정보'
+                    'description': f'{settings.data.market} 전체 종목 정보'
                 }
             ]
         },
@@ -46,7 +46,7 @@ def scan_output_directory(base_dir):
                 {
                     'name': 'Monthly Price',
                     'base': 'priceM',
-                    'description': f'월별 종가 데이터 (상위 {get_config("data.n_universe", 300)}개 종목)'
+                    'description': f'월별 종가 데이터 (상위 {settings.data.n_universe}개 종목)'
                 }
             ]
         },
@@ -94,8 +94,8 @@ def scan_output_directory(base_dir):
                 },
                 {
                     'name': 'Correlation Cluster',
-                    'files': ['correlation_cluster.html'],
-                    'description': 'Hierarchical Clustering 덴드로그램'
+                    'files': ['correlation_cluster.html', 'correlation_cluster.json'],
+                    'description': 'Hierarchical Clustering 덴드로그램 및 클러스터 정보 (JSON 파일 포함)'
                 }
             ]
         }
@@ -165,8 +165,8 @@ def main():
     print("=" * 70)
 
     # 설정 로드
-    base_dir = get_config('output.base_dir', 'output')
-    project_name = get_config('project.name', 'KRX300 Quantitative Analysis')
+    base_dir = settings.output.base_dir
+    project_name = settings.project.name
 
     # 파일 스캔
     print("\n[1/2] 파일 스캔 중...")

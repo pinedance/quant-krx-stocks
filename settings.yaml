@@ -36,6 +36,7 @@ visualization:
 
   dendrogram:  
     method: ward
+    n_cluster: 25
     height_per_item: 15  # Dendrogram 항목당 높이
 
 # Dashboard 크기
@@ -67,3 +68,7 @@ logging:
   format: "%(asctime)s - %(levelname)s - %(message)s"
   file: "log.log"
   console: true
+
+# 프로젝트 설정
+project:
+  name: "KRX Quantitative Analysis"

@@ -5,7 +5,7 @@ STEP 1: KRX300 종목 리스트 생성
 """
 
 from core.io import get_list, export_dataframe_to_formats
-from core.config import get_config
+from core.config import settings
 
 def main():
     print("=" * 60)
@@ -13,7 +13,7 @@ def main():
     print("=" * 60)
 
     # KRX300 종목 리스트 가져오기
-    market = get_config("data.market")
+    market = settings.data.market
 
     print("\n종목 리스트를 가져오는 중...")
     df = get_list(market)
@@ -29,7 +29,7 @@ def main():
     # 3가지 형식으로 저장
     print("\n출력 파일 생성 중...")
 
-    list_dir = get_config("output.list_dir")
+    list_dir = settings.output.list_dir
     export_dataframe_to_formats(
         df,
         f'{list_dir}/{market}_list',

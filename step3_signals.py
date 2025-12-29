@@ -8,7 +8,7 @@ import numpy as np
 from core.io import import_dataframe_from_json, export_dataframe_to_formats
 from core.finance import annualize_rt, stdev, dsdev, get_corrMatrix
 from core.models import LM
-from core.config import get_config
+from core.config import settings
 
 
 def main():
@@ -17,12 +17,12 @@ def main():
     print("=" * 70)
 
     # 설정 로드
-    mnt_periods = get_config('signals.momentum.periods', [12, 36, 60])
-    corr_periods = get_config('signals.correlation.periods', 12)
+    mnt_periods = settings.signals.momentum.periods
+    corr_periods = settings.signals.correlation.periods
     # input dir
-    price_dir = get_config('output.price_dir', 'output/price')
+    price_dir = settings.output.price_dir
     # output dir
-    signal_dir = get_config('output.signal_dir', 'output/signal')
+    signal_dir = settings.output.signal_dir
 
     # 1. Monthly Price DataFrame 로드
     print("\n[1/4] Monthly Price 데이터 로드...")

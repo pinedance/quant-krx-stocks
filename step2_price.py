@@ -5,7 +5,7 @@ STEP 2: KRX300 데이터 생성 및 저장
 import pandas as pd
 from core.io import import_dataframe_from_json, get_price, export_dataframe_to_formats
 from core.utils import date_before
-from core.config import get_config
+from core.config import settings
 
 
 def main():
@@ -14,17 +14,17 @@ def main():
     print("=" * 70)
 
     # 설정 로드
-    n_universe = get_config('data.n_universe', 300)
+    n_universe = settings.data.n_universe
     n_try = n_universe + 100
-    price_periods = get_config('data.price.periods', 63)
+    price_periods = settings.data.price.periods
     # input dir
-    list_dir = get_config('output.list_dir')
+    list_dir = settings.output.list_dir
     # output dir
-    price_dir = get_config('output.price_dir', 'output/price')
+    price_dir = settings.output.price_dir
 
     # 1. 종목 리스트
     print("\n[1/4] 종목 리스트 가져오기...")
-    market = get_config("data.market", "KRX")
+    market = settings.data.market
     tickers = import_dataframe_from_json(f'{list_dir}/{market}_list.json')
     print(f"      총 {len(tickers)}개 종목")
 

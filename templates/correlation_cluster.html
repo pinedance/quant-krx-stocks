@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+    <script src="https://cdn.plot.ly/plotly-3.3.0.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }
+        h2 {
+            color: #34495e;
+            background: #ecf0f1;
+            padding: 12px 20px;
+            border-radius: 5px;
+            margin-top: 40px;
+        }
+        .info-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .info-item {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .info-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+        .dendrogram-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+            overflow-x: auto;
+        }
+        .clusters-container {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+        .cluster {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .cluster-header {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        .cluster-size {
+            display: inline-block;
+            background: #3498db;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            margin-left: 10px;
+        }
+        .cluster-tickers {
+            color: #555;
+            line-height: 1.8;
+            font-size: 0.95em;
+            word-wrap: break-word;
+        }
+        .download-section {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #3498db;
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 5px;
+            transition: background 0.3s;
+        }
+        .download-btn:hover {
+            background: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{title}}</h1>
+
+    <!-- 메타데이터 -->
+    <div class="info-panel">
+        <h2>클러스터링 정보</h2>
+        <div class="info-grid">
+            <div class="info-item">
+                <div class="info-label">클러스터 수</div>
+                <div class="info-value">{{n_clusters}}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">총 종목 수</div>
+                <div class="info-value">{{n_tickers}}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">평균 크기</div>
+                <div class="info-value">{{avg_cluster_size}}</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">방법</div>
+                <div class="info-value" style="font-size: 1.3em;">{{method}}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 다운로드 섹션 -->
+    <div class="download-section">
+        <strong>📥 데이터 다운로드:</strong>
+        <a href="correlation_cluster.json" class="download-btn" download>JSON 다운로드</a>
+        <span style="color: #666; margin-left: 10px;">클러스터 정보를 JSON 파일로 다운로드</span>
+    </div>
+
+    <!-- Dendrogram -->
+    <div class="dendrogram-container">
+        <h2>Hierarchical Clustering Dendrogram</h2>
+        {{dendrogram_html | safe}}
+    </div>
+
+    <!-- 클러스터 목록 -->
+    <div class="clusters-container">
+        <h2>클러스터별 종목 목록</h2>
+        <p style="color: #666; margin-bottom: 20px;">
+            각 클러스터는 상관관계가 높은 종목들로 구성됩니다.
+        </p>
+
+        {% for cluster in clusters %}
+        <div class="cluster">
+            <div class="cluster-header">
+                {{cluster.name}}
+                <span class="cluster-size">{{cluster.size}}개</span>
+            </div>
+            <div class="cluster-tickers">
+                {{cluster.tickers}}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="info-panel" style="margin-top: 40px;">
+        <h2>사용 방법</h2>
+        <ul style="line-height: 1.8; color: #555;">
+            <li><strong>Dendrogram:</strong> 종목 간 거리(1-상관계수)를 시각화. 가까울수록 상관관계가 높음</li>
+            <li><strong>클러스터:</strong> 같은 클러스터 내 종목들은 비슷한 가격 움직임을 보임</li>
+            <li><strong>활용:</strong> 포트폴리오 다각화 시 서로 다른 클러스터에서 종목 선택</li>
+            <li><strong>JSON 파일:</strong> 프로그래밍 방식으로 클러스터 정보 활용 가능</li>
+        </ul>
+    </div>
+</body>
+</html>

@@ -15,7 +15,7 @@ import plotly.figure_factory as ff
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 import networkx as nx
-from core.config import get_config
+from core.config import settings
 from core.io import import_dataframe_from_json, render_dashboard_html, render_html_from_template
 
 
@@ -41,10 +41,10 @@ def create_momentum_dashboard(momentum):
     """Momentum 대시보드 생성 (독립된 플롯 2개를 하나의 HTML에)"""
     print("\n[1/4] Momentum Dashboard 생성 중...")
 
-    periods = get_config('visualization.periods', [12, 36, 60])
-    colors = get_config('visualization.colors', ['#FF6B6B', '#4ECDC4', '#45B7D1'])
-    height = get_config('visualization.dashboard.height', 600)
-    dashboard_dir = get_config('output.dashboard_dir', 'output/dashboard')
+    periods = settings.visualization.scatter_plot.periods
+    colors = settings.visualization.scatter_plot.colors
+    height = settings.dashboard.height
+    dashboard_dir = settings.output.dashboard_dir
     Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
 
     # ========== Chart 1: Monthly Momentum ==========
@@ -186,10 +186,10 @@ def create_performance_dashboard(performance):
     """Performance 대시보드 생성 (독립된 플롯 2개를 하나의 HTML에)"""
     print("\n[2/4] Performance Dashboard 생성 중...")
 
-    periods = get_config('visualization.periods', [12, 36, 60])
-    colors = get_config('visualization.colors', ['#FF6B6B', '#4ECDC4', '#45B7D1'])
-    height = get_config('visualization.dashboard.height', 600)
-    dashboard_dir = get_config('output.dashboard_dir', 'output/dashboard')
+    periods = settings.visualization.scatter_plot.periods
+    colors = settings.visualization.scatter_plot.colors
+    height = settings.dashboard.height
+    dashboard_dir = settings.output.dashboard_dir
     Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
 
     # ========== Chart 1: Sharpe Ratio (AR vs SD) ==========
@@ -336,9 +336,9 @@ def create_correlation_network(correlation):
     print("\n[3/4] Correlation Network 생성 중 (VOSviewer JSON)...")
 
     # 설정 로드
-    threshold = get_config('visualization.correlation_network.threshold', 0.5)
-    layout_seed = get_config('visualization.correlation_network.layout_seed', 42)
-    layout_k = get_config('visualization.correlation_network.layout_k', 0.5)
+    threshold = settings.visualization.correlation_network.threshold
+    layout_seed = settings.visualization.correlation_network.layout_seed
+    layout_k = settings.visualization.correlation_network.layout_k
 
     # marginal_mean 제거하고 실제 종목들만
     corr_matrix = correlation.drop('mean', axis=0).drop('mean', axis=1)
@@ -422,7 +422,7 @@ def create_correlation_network(correlation):
         })
 
     # JSON 저장
-    dashboard_dir = get_config('output.dashboard_dir', 'output/dashboard')
+    dashboard_dir = settings.output.dashboard_dir
     json_path = f'{dashboard_dir}/correlation_network.json'
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(vos_data, f, ensure_ascii=False, indent=2)
@@ -443,15 +443,19 @@ def create_correlation_network(correlation):
 
 
 def create_correlation_cluster(correlation):
-    """Correlation Cluster Dendrogram"""
+    """Correlation Cluster Dendrogram with cluster assignments"""
     print("\n[4/4] Correlation Cluster Dendrogram 생성 중...")
 
-    width = get_config('visualization.dashboard.width', 1000)
-    height_per_item = get_config('visualization.dendrogram.height_per_item', 15)
-    cluster_method = get_config('visualization.dendrogram.method', 'ward')
+    from scipy.cluster.hierarchy import fcluster
+
+    width = settings.dashboard.width
+    height_per_item = settings.visualization.dendrogram.height_per_item
+    cluster_method = settings.visualization.dendrogram.method
+    n_clusters = settings.visualization.dendrogram.n_cluster
 
     # marginal_mean 제거
     corr_matrix = correlation.drop('mean', axis=0).drop('mean', axis=1)
+    tickers = corr_matrix.index.tolist()
 
     # 상관계수를 거리로 변환 (1 - correlation)
     distance_matrix = 1 - corr_matrix
@@ -462,11 +466,24 @@ def create_correlation_cluster(correlation):
     # Hierarchical clustering
     linkage_matrix = linkage(condensed_dist, method=cluster_method)
 
+    # Cluster assignments (n_clusters개의 클러스터로 분할)
+    cluster_labels = fcluster(linkage_matrix, n_clusters, criterion='maxclust')
+
+    # 클러스터별 ticker 추출
+    clusters = {}
+    for i in range(1, n_clusters + 1):
+        cluster_tickers = [tickers[j] for j in range(len(tickers)) if cluster_labels[j] == i]
+        if cluster_tickers:  # 빈 클러스터 제외
+            clusters[f"Cluster_{i}"] = cluster_tickers
+
+    print(f"  클러스터 수: {len(clusters)}개")
+    print(f"  평균 클러스터 크기: {len(tickers) / len(clusters):.1f}개")
+
     # Plotly dendrogram
     fig = ff.create_dendrogram(
         distance_matrix.values,
         orientation='left',
-        labels=corr_matrix.index.tolist(),
+        labels=tickers,
         linkagefun=lambda x: linkage(x, method=cluster_method)
     )
 
@@ -481,9 +498,46 @@ def create_correlation_cluster(correlation):
         hovermode='closest'
     )
 
-    dashboard_dir = get_config('output.dashboard_dir', 'output/dashboard')
+    # 클러스터 정보를 JSON으로 저장
+    dashboard_dir = settings.output.dashboard_dir
+
+    cluster_data = {
+        'metadata': {
+            'n_clusters': len(clusters),
+            'n_tickers': len(tickers),
+            'method': cluster_method,
+            'avg_cluster_size': len(tickers) / len(clusters)
+        },
+        'clusters': clusters
+    }
+
+    json_path = f'{dashboard_dir}/correlation_cluster.json'
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(cluster_data, f, ensure_ascii=False, indent=2)
+    print(f"  ✓ {json_path}")
+
+    # 템플릿을 사용하여 HTML 생성 (클러스터 정보 포함)
     html_path = f'{dashboard_dir}/correlation_cluster.html'
-    fig.write_html(html_path)
+    render_html_from_template(
+        'correlation_cluster.html',
+        {
+            'title': 'KRX300 Correlation Cluster',
+            'dendrogram_html': fig.to_html(full_html=False, include_plotlyjs=False, div_id='dendrogram', config={'responsive': True}),
+            'n_clusters': len(clusters),
+            'n_tickers': len(tickers),
+            'method': cluster_method,
+            'avg_cluster_size': f"{len(tickers) / len(clusters):.1f}",
+            'clusters': [
+                {
+                    'name': name,
+                    'size': len(ticker_list),
+                    'tickers': ', '.join(sorted(ticker_list))
+                }
+                for name, ticker_list in sorted(clusters.items())
+            ]
+        },
+        html_path
+    )
     print(f"  ✓ {html_path}")
 
 
@@ -494,7 +548,7 @@ def main():
 
     # 데이터 로드
     print("\n데이터 로딩 중...")
-    signal_dir = get_config('output.signal_dir', 'output/signal')
+    signal_dir = settings.output.signal_dir
 
     momentum = import_dataframe_from_json(f'{signal_dir}/momentum.json')
     performance = import_dataframe_from_json(f'{signal_dir}/performance.json')
@@ -510,7 +564,7 @@ def main():
     create_correlation_network(correlation)
     create_correlation_cluster(correlation)
 
-    dashboard_dir = get_config('output.dashboard_dir', 'output/dashboard')
+    dashboard_dir = settings.output.dashboard_dir
 
     print("\n" + "=" * 70)
     print("STEP 4 완료!")
