@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #34495e;
+            background: #ecf0f1;
+            padding: 12px 20px;
+            border-radius: 5px;
+            margin-top: 40px;
+            margin-bottom: 20px;
+        }
+        .info {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .info p {
+            margin: 8px 0;
+            color: #555;
+        }
+        .section {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+        .item {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #3498db;
+        }
+        .item-title {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        .file-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .file-link {
+            display: inline-block;
+            padding: 8px 16px;
+            background: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+        .file-link:hover {
+            background: #2980b9;
+        }
+        .file-link.html {
+            background: #2ecc71;
+        }
+        .file-link.html:hover {
+            background: #27ae60;
+        }
+        .file-link.tsv {
+            background: #e67e22;
+        }
+        .file-link.tsv:hover {
+            background: #d35400;
+        }
+        .file-link.json {
+            background: #9b59b6;
+        }
+        .file-link.json:hover {
+            background: #8e44ad;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .stat-item {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-number {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        .description {
+            color: #666;
+            font-size: 0.95em;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>{{title}}</h1>
+
+    <div class="info">
+        <p><strong>생성일시:</strong> {{date}}</p>
+        <p><strong>프로젝트:</strong> {{project_name}}</p>
+    </div>
+
+    <div class="stats">
+        <div class="stat-item">
+            <div class="stat-number">{{n_sections}}</div>
+            <div class="stat-label">Sections</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{n_items}}</div>
+            <div class="stat-label">Data Items</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number">{{n_files}}</div>
+            <div class="stat-label">Total Files</div>
+        </div>
+    </div>
+
+    {% for section in sections %}
+    <h2>{{section.title}}</h2>
+    <div class="section">
+        {% if section.description %}
+        <p class="description">{{section.description}}</p>
+        {% endif %}
+
+        {% for item in section.data_items %}
+        <div class="item">
+            <div class="item-title">{{item.name}}</div>
+            {% if item.description %}
+            <p class="description">{{item.description}}</p>
+            {% endif %}
+            <div class="file-links">
+                {% for file in item.files %}
+                <a href="{{file.path}}" class="file-link {{file.type}}" target="_blank">
+                    {{file.label}}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endfor %}
+
+    <div class="info" style="margin-top: 40px;">
+        <p><strong>사용 방법:</strong></p>
+        <ul>
+            <li>HTML: 브라우저에서 데이터 미리보기 및 시각화</li>
+            <li>TSV: 엑셀, 스프레드시트에서 열기 (탭으로 구분)</li>
+            <li>JSON: 프로그래밍 방식으로 데이터 로드</li>
+        </ul>
+    </div>
+</body>
+</html>

@@ -14,7 +14,13 @@
 <body>
     <h1>{{title}}</h1>
     <p>생성일시: {{date}}</p>
+    {% if dataframe %}
+    <!-- List 모드: 전체 테이블 표시 -->
+    {{dataframe | safe}}
+    {% else %}
+    <!-- DataFrame 모드: 메타데이터만 표시 -->
     <p>Shape: {{n_row}} rows × {{n_col}} columns</p>
-{df.to_html(classes='data-table', float_format=lambda x: f'{x:.{float_precision}f}' if abs(x) < large_threshold else f'{x:.{large_precision}f}')}
+    <p><i>데이터는 TSV 또는 JSON 파일을 참조하세요.</i></p>
+    {% endif %}
 </body>
 </html>

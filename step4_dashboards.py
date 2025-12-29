@@ -1,5 +1,5 @@
 """
-STEP 3: KRX300 대시보드 생성
+STEP 4: KRX300 대시보드 생성
 - Momentum Dashboard (Plotly)
 - Performance Dashboard (Plotly)
 - Correlation Network (VOSviewer JSON)
@@ -11,72 +11,12 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import plotly.figure_factory as ff
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 import networkx as nx
 from core.config import get_config
-from core.io import get_template
-
-template = get_template(get_config(template.base_dir), 'dashboard.html')
-
-def render_dashboard_html(title, figures, chart_ids, output_path):
-    """여러 Plotly figure를 하나의 HTML로 생성"""
-
-    # 첫 번째 figure를 full HTML로 저장
-    figures_html = [
-        e.to_html(full_html=False, include_plotlyjs=False, div_id=chart_ids[i], config={'responsive': True}) 
-        for i, e in enumerate(figures)
-    ]
-
-    render_data = {
-        'title': title,
-        'figures': figures_html
-    }
-
-    # 템플릿 렌더링
-    html_content = template.render(render_data)
-
-    # 저장
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-
-def load_data():
-    """JSON 파일에서 데이터 로드 (fast fail)"""
-    print("데이터 로딩 중...")
-
-    data_dir = get_config('output.data_dir', 'output/data')
-
-    with open(f'{data_dir}/momentum.json', 'r') as f:
-        momentum_data = json.load(f)
-        momentum = pd.DataFrame(
-            momentum_data['data'],
-            index=momentum_data['index'],
-            columns=momentum_data['columns']
-        )
-
-    with open(f'{data_dir}/performance.json', 'r') as f:
-        perf_data = json.load(f)
-        performance = pd.DataFrame(
-            perf_data['data'],
-            index=perf_data['index'],
-            columns=perf_data['columns']
-        )
-
-    with open(f'{data_dir}/correlation.json', 'r') as f:
-        corr_data = json.load(f)
-        correlation = pd.DataFrame(
-            corr_data['data'],
-            index=corr_data['index'],
-            columns=corr_data['columns']
-        )
-
-    print(f"  Momentum: {momentum.shape}")
-    print(f"  Performance: {performance.shape}")
-    print(f"  Correlation: {correlation.shape}")
-
-    return momentum, performance, correlation
+from core.io import import_dataframe_from_json, render_dashboard_html, render_html_from_template
 
 
 def create_scatter_traces(data, x_col, y_col, periods, colors, name_func, hover_func):
@@ -488,65 +428,17 @@ def create_correlation_network(correlation):
         json.dump(vos_data, f, ensure_ascii=False, indent=2)
     print(f"  ✓ {json_path}")
 
-    # VOSviewer 안내 HTML 생성
-    html_content = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>KRX300 Correlation Network - VOSviewer</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }}
-        .info {{ background: #f0f0f0; padding: 20px; border-radius: 8px; margin: 20px 0; }}
-        .button {{ display: inline-block; padding: 12px 24px; background: #4CAF50; color: white;
-                   text-decoration: none; border-radius: 4px; margin: 10px 5px; }}
-        .button:hover {{ background: #45a049; }}
-        pre {{ background: #f5f5f5; padding: 15px; border-radius: 4px; overflow-x: auto; }}
-    </style>
-</head>
-<body>
-    <h1>KRX300 Correlation Network</h1>
-
-    <div class="info">
-        <h2>네트워크 정보</h2>
-        <ul>
-            <li>노드 수: {G.number_of_nodes()}</li>
-            <li>엣지 수: {G.number_of_edges()}</li>
-            <li>클러스터 수: {len(communities)}</li>
-            <li>상관계수 Threshold: {threshold}</li>
-            <li>고립 노드: {len(isolated_nodes)}개</li>
-        </ul>
-    </div>
-
-    <h2>VOSviewer로 열기</h2>
-    <p>다음 두 가지 방법으로 네트워크를 시각화할 수 있습니다:</p>
-
-    <h3>방법 1: VOSviewer Online (추천)</h3>
-    <ol>
-        <li><a href="https://app.vosviewer.com/" target="_blank" class="button">VOSviewer Online 열기</a></li>
-        <li>"Open file" 버튼 클릭</li>
-        <li><code>correlation_network.json</code> 파일 업로드</li>
-    </ol>
-
-    <h3>방법 2: URL로 직접 열기 (서버 필요)</h3>
-    <p>JSON 파일을 웹 서버에 올린 후:</p>
-    <pre>https://app.vosviewer.com/?json=YOUR_JSON_FILE_URL</pre>
-
-    <h2>데이터 파일</h2>
-    <p><a href="correlation_network.json" download class="button">correlation_network.json 다운로드</a></p>
-
-    <h2>주의사항</h2>
-    <ul>
-        <li>노드 크기는 marginal_mean (다른 종목들과의 상관관계 합계)을 반영합니다</li>
-        <li>클러스터는 modularity maximization 알고리즘으로 자동 감지되었습니다</li>
-        <li>VOSviewer에서 zoom, pan, 클러스터 색상 등을 조정할 수 있습니다</li>
-        <li>Threshold를 조정하려면 settings.yaml 파일을 수정하세요</li>
-    </ul>
-</body>
-</html>"""
-
+    # VOSviewer 안내 HTML 생성 (템플릿 사용)
     html_path = f'{dashboard_dir}/correlation_network.html'
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
+    render_data = {
+        'title': 'KRX300 Correlation Network - VOSviewer',
+        'n_nodes': G.number_of_nodes(),
+        'n_edges': G.number_of_edges(),
+        'n_clusters': len(communities),
+        'threshold': threshold,
+        'n_isolated': len(isolated_nodes)
+    }
+    render_html_from_template('correlation_network.html', render_data, html_path)
     print(f"  ✓ {html_path}")
 
 
@@ -596,11 +488,20 @@ def create_correlation_cluster(correlation):
 
 def main():
     print("=" * 70)
-    print("STEP 3: KRX300 대시보드 생성")
+    print("STEP 4: KRX300 대시보드 생성")
     print("=" * 70)
 
     # 데이터 로드
-    momentum, performance, correlation = load_data()
+    print("\n데이터 로딩 중...")
+    signal_dir = get_config('output.signal_dir', 'output/signal')
+
+    momentum = import_dataframe_from_json(f'{signal_dir}/momentum.json')
+    performance = import_dataframe_from_json(f'{signal_dir}/performance.json')
+    correlation = import_dataframe_from_json(f'{signal_dir}/correlation.json')
+
+    print(f"  Momentum: {momentum.shape}")
+    print(f"  Performance: {performance.shape}")
+    print(f"  Correlation: {correlation.shape}")
 
     # 대시보드 생성
     create_momentum_dashboard(momentum)
@@ -611,14 +512,8 @@ def main():
     dashboard_dir = get_config('output.dashboard_dir', 'output/dashboard')
 
     print("\n" + "=" * 70)
-    print("STEP 3 완료!")
+    print("STEP 4 완료!")
     print("=" * 70)
-    print(f"\n생성된 파일: {dashboard_dir}/")
-    print("- momentum.html (2개 독립 플롯)")
-    print("- performance.html (2개 독립 플롯)")
-    print("- correlation_network.html")
-    print("- correlation_network.json (VOSviewer용)")
-    print("- correlation_cluster.html")
 
 
 if __name__ == "__main__":

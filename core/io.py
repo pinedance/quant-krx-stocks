@@ -1,6 +1,10 @@
 """데이터 입출력"""
 from jinja2 import Environment, FileSystemLoader
 import requests
+import json
+import json
+from pathlib import Path
+from datetime import datetime
 import pandas as pd
 from datetime import datetime
 import FinanceDataReader as fdr
@@ -20,10 +24,6 @@ def get_list(market="KRX"):
         df = _get_krx_list()
     else:
         raise ValueError(f"Unsupported market: {market}")
-    return df
-
-def get_local_list(path):
-    # TODO: read local file and return data as dataframe
     return df
 
 def _download_single_ticker(ticker, start_date, end_date, data_source=None):
@@ -110,7 +110,181 @@ def get_price(tickers, start_date=None, end_date=None):
     return closeD
 
 def get_template(base_dir, filename):
-    file_loader = FileSystemLoader( base_dir )
+    """Jinja2 템플릿 로드"""
+    file_loader = FileSystemLoader(base_dir)
     env = Environment(loader=file_loader)
     template = env.get_template(filename)
     return template
+
+def import_dataframe_from_json(json_path):
+    """JSON 파일에서 DataFrame 가져오기"""
+
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+
+    df = pd.DataFrame(
+        data['data'],
+        index=data['index'],
+        columns=data['columns']
+    )
+    return df
+
+
+def export_dataframe_to_html(df, base_path, name):
+    """DataFrame을 HTML로 저장
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        저장할 DataFrame
+    base_path : str
+        파일 경로 (확장자 제외)
+    name : str
+        제목
+    """
+    # 출력 디렉토리 확인
+    Path(base_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # 템플릿 로드
+    template_dir = get_config("template.base_dir")
+    template = get_template(template_dir, 'dataframe.html')
+
+    # HTML 렌더링 데이터
+    render_data = {
+        "title": name,
+        "date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "n_row": df.shape[0],
+        "n_col": df.shape[1],
+        "dataframe": df.to_html(index=True, escape=False)
+    }
+
+    html_content = template.render(render_data)
+    html_path = f"{base_path}.html"
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    print(f"  ✓ {html_path}")
+
+
+def export_dataframe_to_tsv(df, base_path, include_index=True):
+    """DataFrame을 TSV로 저장
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        저장할 DataFrame
+    base_path : str
+        파일 경로 (확장자 제외)
+    include_index : bool
+        index 포함 여부
+    """
+    # 출력 디렉토리 확인
+    Path(base_path).parent.mkdir(parents=True, exist_ok=True)
+
+    tsv_path = f"{base_path}.tsv"
+    df.to_csv(tsv_path, sep='\t', encoding='utf-8', index=include_index)
+    print(f"  ✓ {tsv_path}")
+
+
+def export_dataframe_to_json(df, base_path):
+    """DataFrame을 JSON으로 저장
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        저장할 DataFrame
+    base_path : str
+        파일 경로 (확장자 제외)
+    """
+    # 출력 디렉토리 확인
+    Path(base_path).parent.mkdir(parents=True, exist_ok=True)
+
+    json_path = f"{base_path}.json"
+    data = {
+        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'shape': list(df.shape),
+        'columns': df.columns.tolist(),
+        'index': df.index.tolist() if isinstance(df.index, pd.DatetimeIndex) else df.index.map(str).tolist(),
+        'data': df.to_dict(orient='split')['data']
+    }
+
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+    print(f"  ✓ {json_path}")
+
+
+def export_dataframe_to_formats(df, base_path, name, include_index=True):
+    """DataFrame을 HTML, TSV, JSON 형식으로 저장 (wrapper 함수)
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        저장할 DataFrame
+    base_path : str
+        파일 경로 (확장자 제외)
+    name : str
+        제목
+    include_index : bool
+        TSV 저장시 index 포함 여부
+    """
+    export_dataframe_to_html(df, base_path, name)
+    export_dataframe_to_tsv(df, base_path, include_index)
+    export_dataframe_to_json(df, base_path)
+
+
+def render_html_from_template(template_name, render_data, output_path):
+    """템플릿을 사용하여 HTML 생성 (범용)
+
+    Parameters:
+    -----------
+    template_name : str
+        템플릿 파일 이름 (예: 'correlation_network.html')
+    render_data : dict
+        템플릿에 전달할 데이터
+    output_path : str
+        출력 파일 경로
+    """
+    from pathlib import Path
+
+    # 출력 디렉토리 확인
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # 템플릿 로드
+    template_dir = get_config("template.base_dir")
+    template = get_template(template_dir, template_name)
+
+    # 템플릿 렌더링
+    html_content = template.render(render_data)
+
+    # 저장
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+
+
+def render_dashboard_html(title, figures, chart_ids, output_path):
+    """여러 Plotly figure를 하나의 HTML로 생성"""
+    from pathlib import Path
+
+    # 출력 디렉토리 확인
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+
+    # 템플릿 로드
+    template_dir = get_config("template.base_dir")
+    template = get_template(template_dir, 'dashboard.html')
+
+    # Plotly figures를 HTML로 변환
+    figures_html = [
+        fig.to_html(full_html=False, include_plotlyjs=False, div_id=chart_ids[i], config={'responsive': True})
+        for i, fig in enumerate(figures)
+    ]
+
+    render_data = {
+        'title': title,
+        'figures': figures_html
+    }
+
+    # 템플릿 렌더링
+    html_content = template.render(render_data)
+
+    # 저장
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
