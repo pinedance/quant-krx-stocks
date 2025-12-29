@@ -1,4 +1,5 @@
 """데이터 입출력"""
+from jinja2 import Environment, FileSystemLoader
 import requests
 import pandas as pd
 from datetime import datetime
@@ -8,16 +9,21 @@ from tqdm import tqdm
 import os
 from core.config import get_config
 
-def _get_krx_top300_list(trade_date=None):
-    cols = ["Code", "ISU_CD", "Name", "Market", "Volume", "Amount", "Marcap", "Stocks", "MarketId"]
-    return fdr.StockListing("KRX")[cols].sort_values(by='Marcap', ascending=False)[:300]
 
-def get_list(index_name='KRX-top300', trade_date=None):
+def _get_krx_list():
+    cols = ["Code", "ISU_CD", "Name", "Market", "Volume", "Amount", "Marcap", "Stocks", "MarketId"]
+    return fdr.StockListing("KRX")[cols].sort_values(by='Marcap', ascending=False)
+
+def get_list(market="KRX"):
     """지수 구성 종목 리스트를 가져옵니다."""
-    if index_name == 'KRX-top300':
-        df = _get_krx_top300_list(trade_date)
+    if market == 'KRX':
+        df = _get_krx_list()
     else:
-        raise ValueError(f"Unsupported index: {index_name}")
+        raise ValueError(f"Unsupported market: {market}")
+    return df
+
+def get_local_list(path):
+    # TODO: read local file and return data as dataframe
     return df
 
 def _download_single_ticker(ticker, start_date, end_date, data_source=None):
@@ -102,3 +108,9 @@ def get_price(tickers, start_date=None, end_date=None):
     closeD = pd.DataFrame(close_series)
 
     return closeD
+
+def get_template(base_dir, filename):
+    file_loader = FileSystemLoader( base_dir )
+    env = Environment(loader=file_loader)
+    template = env.get_template(filename)
+    return template

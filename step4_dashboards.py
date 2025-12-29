@@ -16,13 +16,10 @@ import plotly.figure_factory as ff
 from scipy.cluster.hierarchy import linkage
 from scipy.spatial.distance import squareform
 import networkx as nx
-from jinja2 import Environment, FileSystemLoader
 from core.config import get_config
+from core.io import get_template
 
-# 템플릿 파일이 있는 디렉토리 설정
-file_loader = FileSystemLoader('templates')
-env = Environment(loader=file_loader)
-template = env.get_template('dashboard.html')
+template = get_template(get_config(template.base_dir), 'dashboard.html')
 
 def render_dashboard_html(title, figures, chart_ids, output_path):
     """여러 Plotly figure를 하나의 HTML로 생성"""

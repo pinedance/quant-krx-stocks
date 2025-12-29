@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from pathlib import Path
-from core.io import get_list, get_price
+from core.io import get_list, get_price, get_template
 from core.utils import date_before
 from core.finance import annualize_rt, stdev, dsdev, get_corrMatrix
 from core.models import LM
@@ -15,9 +15,7 @@ from core.config import get_config
 from jinja2 import Environment, FileSystemLoader
 
 # 템플릿 파일이 있는 디렉토리 설정
-file_loader = FileSystemLoader('templates')
-env = Environment(loader=file_loader)
-template = env.get_template('dataframe.html')
+template = get_template(get_config(template.base_dir), 'dataframe.html')
 
 def export_dataframe_to_formats(df, base_path, name):
     """DataFrame을 HTML, TSV, JSON 형식으로 저장"""
@@ -69,44 +67,19 @@ def main():
     print("=" * 70)
 
     # 설정 로드
-    start_years = get_config('data.start_years', 6)
-    ticker_limit = get_config('data.ticker_limit', None)
-    periods = get_config('analysis.periods', [12, 36, 60])
-    corr_periods = get_config('analysis.correlation_periods', 12)
-    data_dir = get_config('output.data_dir', 'output/data')
+    mnt_periods = get_config('signals.momentum.periods', [12, 36, 60])
+    corr_periods = get_config('signals.correlation.periods', 12)
+    # input dir
+    price_dir = get_config('output.price_dir')
+    # output dir
+    signal_dir = get_config('output.signal_dir')
 
-    # 1. KRX300 종목 리스트
-    print("\n[1/7] KRX300 종목 리스트 가져오기...")
-    tickers = get_list('KRX-top300')
-    print(f"      총 {len(tickers)}개 종목")
-
-    # 종목 수 제한
-    if ticker_limit:
-        tickers = tickers[:ticker_limit]
-        print(f"      제한: {len(tickers)}개 종목만 사용")
-
-    # 2. 가격 데이터 다운로드
-    print(f"\n[2/7] 가격 데이터 다운로드 ({start_years}년치)...")
-    start_date = date_before(years=start_years)
-    print(f"      시작일: {start_date}")
-
-    tickers_lst = tickers['Code'].to_list()
-    closeD = get_price(tickers_lst, start_date=start_date)
-    print(f"      다운로드 완료 | 종목(열): {len(closeD.shape[1])}, 날짜(행): {len(closeD.shape[0])}")
-
-    # 3. Daily/Monthly Price DataFrame
-    print("\n[3/7] Monthly Price DataFrame 생성...")
-    closeM = closeD.resample('ME').last()  # 'M' → 'ME' (Month End)
-    # print(closeM.shape)
-    closeM.dropna(axis=1, how='any', inplace=True)
-    # print(closeM.shape)
-    # closeM_log = np.log(closeM.replace(0, np.nan))  # 0 방지
+    # Monthly Price DataFrame
+    closeM = get_local_price(price_dir, 'priceM')
+    closeM = closeM.iloc[:-1]   # 마지막 행 제거 (현재 가격 => 이전 달 종가)
     closeM_log = np.log(closeM)
 
-    print(f"      Daily:  {closeD.shape}")
-    print(f"      Monthly: {closeM.shape}")
-
-    # 4. Momentum 계산
+    # Momentum (with Return)
     print("\n[4/7] Momentum 지표 계산...")
     mmtM = pd.DataFrame(index=closeM.columns)
 
@@ -116,8 +89,8 @@ def main():
 
     mmtM['13612MR'] = (mmtM['1MR'] + mmtM['3MR'] + mmtM['6MR'] + mmtM['12MR']) / 4
 
-    # Linear Regression (설정에서 가져온 periods 사용)
-    for period in periods:
+    # Momentum (with Linear Regression)
+    for period in mnt_periods:
         LR = LM().fit(closeM_log, period)
         mmtM[f'AS{period}'] = ( np.exp(LR.slope * 12) - 1 )  # Monthly
         mmtM[f'RS{period}'] = LR.score
@@ -128,16 +101,14 @@ def main():
     print("\n[5/7] Performance 지표 계산...")
     pfmM = pd.DataFrame(index=closeM.columns)
 
-    for period in periods:
+    for period in mnt_periods:
         if len(closeM) >= period:
             # Annualized Return
             returns = closeM.pct_change(periods=period).iloc[-1]
             annualized_returns = annualize_rt(returns, period, 'M')
             pfmM[f'AR{period}'] = annualized_returns
-
             # Standard Deviation
             pfmM[f'SD{period}'] = stdev(closeM, period)
-
             # Downside Deviation (개선된 계산)
             pfmM[f'DD{period}'] = dsdev(closeM, period)
 
