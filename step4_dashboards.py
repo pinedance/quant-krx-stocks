@@ -1,11 +1,3 @@
-"""
-STEP 4: KRX300 대시보드 생성
-- Momentum Dashboard (Plotly)
-- Performance Dashboard (Plotly)
-- Correlation Network (VOSviewer JSON)
-- Correlation Cluster (Plotly Dendrogram)
-"""
-
 import json
 import pandas as pd
 import numpy as np
@@ -20,7 +12,6 @@ from core.io import import_dataframe_from_json, render_dashboard_html, render_ht
 
 
 def create_momentum_dashboard(momentum):
-    """Momentum 대시보드 생성 (독립된 플롯 2개를 하나의 HTML에)"""
     print("\n[1/4] Momentum Dashboard 생성 중...")
 
     periods = settings.visualization.scatter_plot.periods

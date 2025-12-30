@@ -44,7 +44,7 @@ def main():
     # Momentum (with Linear Regression)
     for period in mnt_periods:
         LR = LM().fit(closeM_log, period)
-        mmtM[f'AS{period}'] = ( np.exp(LR.slope * 12) - 1 )  # Monthly
+        mmtM[f'AS{period}'] = ( np.exp(LR.slope * 12) - 1 )  # 연율화, Monthly
         mmtM[f'RS{period}'] = LR.score
 
     print(f"      완료: {mmtM.shape}")
