@@ -139,7 +139,7 @@ def calculate_axis_range(data_series):
 # Helper Functions: Trendline
 # ============================================================
 
-def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True):
+def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True, legendgroup=None):
     """
     산점도에 추세선을 추가합니다.
 
@@ -157,6 +157,8 @@ def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True):
         범례 이름
     show_in_legend : bool
         범례 표시 여부
+    legendgroup : str, optional
+        Legend 그룹 이름 (같은 그룹은 함께 show/hide됨)
     """
     style = settings.visualization.scatter_plot.trendline
 
@@ -189,6 +191,7 @@ def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True):
             opacity=style.opacity,
             name=name,
             showlegend=show_in_legend,
+            legendgroup=legendgroup,
             hoverinfo='skip'
         )
     )
@@ -198,7 +201,7 @@ def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True):
 # Helper Functions: Scatter Trace
 # ============================================================
 
-def add_scatter_trace(fig, x_data, y_data, labels, color, name, hover_template):
+def add_scatter_trace(fig, x_data, y_data, labels, color, name, hover_template, legendgroup=None):
     """
     산점도 trace를 추가합니다.
 
@@ -218,6 +221,8 @@ def add_scatter_trace(fig, x_data, y_data, labels, color, name, hover_template):
         범례 이름
     hover_template : str
         호버 템플릿
+    legendgroup : str, optional
+        Legend 그룹 이름 (같은 그룹은 함께 show/hide됨)
     """
     marker_style = settings.visualization.scatter_plot.marker
 
@@ -229,7 +234,8 @@ def add_scatter_trace(fig, x_data, y_data, labels, color, name, hover_template):
             marker=dict(size=marker_style.size, color=color, opacity=marker_style.opacity),
             text=labels,
             hovertemplate=hover_template,
-            name=name
+            name=name,
+            legendgroup=legendgroup
         )
     )
 
@@ -370,6 +376,9 @@ def create_multi_period_scatter_chart(
         x_data = x_data_func(period)
         y_data = y_data_func(period)
 
+        # 같은 legendgroup으로 scatter와 trendline 묶기
+        group_name = f'period_{period}'
+
         add_scatter_trace(
             fig=fig,
             x_data=x_data,
@@ -377,7 +386,8 @@ def create_multi_period_scatter_chart(
             labels=labels,
             color=color,
             name=f'{period}개월',
-            hover_template=hover_template_func(period)
+            hover_template=hover_template_func(period),
+            legendgroup=group_name
         )
 
         add_trendline(
@@ -386,7 +396,8 @@ def create_multi_period_scatter_chart(
             y_data=y_data,
             color=color,
             name=f'{period}M 추세선',
-            show_in_legend=False
+            show_in_legend=False,
+            legendgroup=group_name
         )
 
     # 참조선
