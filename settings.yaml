@@ -28,13 +28,41 @@ visualization:
       - "#4ECDC4"  # 36개월 - 청록
       - "#45B7D1"  # 60개월 - 파랑
 
+    # Marker 스타일
+    marker:
+      size: 8
+      opacity: 0.6
+
+    # 추세선 스타일
+    trendline:
+      width: 2
+      dash: "dot"  # dot, dash, solid
+      single_color: "red"  # 단일 차트용 추세선 색상
+      dash_style_single: "dash"  # 단일 차트용 dash 스타일
+
+    # 참조선 스타일
+    reference_line:
+      color: "gray"
+      dash: "dash"
+
+    # 축 범위 패딩
+    axis_padding:
+      positive_multiplier: 1.1
+      negative_multiplier: 1.1
+      min_multiplier: 0.9
+
+    # 레이아웃
+    layout:
+      hovermode: "closest"
+      showlegend: true
+
   # Correlation network 설정
   correlation_network:
     threshold: 0.5  # 상관계수 threshold (이상만 엣지 생성)
     layout_seed: 42  # spring layout 시드
     layout_k: 0.5  # spring layout k 파라미터
 
-  dendrogram:  
+  dendrogram:
     method: ward
     n_cluster: 25
     height_per_item: 15  # Dendrogram 항목당 높이
