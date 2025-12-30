@@ -26,7 +26,7 @@ visualization:
     colors:
       - "#FF6B6B"  # 12개월 - 빨강
       - "#4ECDC4"  # 36개월 - 청록
-      - "#45B7D1"  # 60개월 - 파랑
+      - "royalblue"  # 60개월 - 파랑
 
     # Marker 스타일
     marker:
@@ -35,10 +35,9 @@ visualization:
 
     # 추세선 스타일
     trendline:
-      width: 2
+      width: 1.5
       dash: "dot"  # dot, dash, solid
-      single_color: "red"  # 단일 차트용 추세선 색상
-      dash_style_single: "dash"  # 단일 차트용 dash 스타일
+      opacity: 0.8  # 추세선 투명도
 
     # 참조선 스타일
     reference_line:

@@ -17,6 +17,93 @@ from core.io import import_dataframe_from_json, render_dashboard_html, render_ht
 
 
 # ============================================================
+# Constants
+# ============================================================
+
+MARGINAL_MEAN_COLUMN = 'mean'
+
+
+# ============================================================
+# Data Transformation Functions
+# ============================================================
+
+def calculate_momentum_quality(momentum, period):
+    """
+    Momentum Quality (R × AS) 계산
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        Momentum 데이터
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Momentum Quality 값
+    """
+    return np.sqrt(momentum[f'RS{period}']) * momentum[f'AS{period}']
+
+
+def calculate_sharpe_ratio(performance, period):
+    """
+    Sharpe Ratio (AR / SD) 계산
+
+    Parameters:
+    -----------
+    performance : pd.DataFrame
+        Performance 데이터
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Sharpe Ratio 값
+    """
+    return performance[f'AR{period}'] / performance[f'SD{period}']
+
+
+def calculate_sortino_ratio(performance, period):
+    """
+    Sortino Ratio (AR / DD) 계산
+
+    Parameters:
+    -----------
+    performance : pd.DataFrame
+        Performance 데이터
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Sortino Ratio 값
+    """
+    return performance[f'AR{period}'] / performance[f'DD{period}']
+
+
+def calculate_correlation_coefficient(momentum, period):
+    """
+    Correlation Coefficient (√R²) 계산
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        Momentum 데이터
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Correlation Coefficient 값
+    """
+    return np.sqrt(momentum[f'RS{period}'])
+
+
+# ============================================================
 # Helper Functions: Axis Range Calculation
 # ============================================================
 
@@ -99,6 +186,7 @@ def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True):
             y=y_trend,
             mode='lines',
             line=dict(color=color, dash=style.dash, width=style.width),
+            opacity=style.opacity,
             name=name,
             showlegend=show_in_legend,
             hoverinfo='skip'
@@ -216,12 +304,104 @@ def create_base_figure(title, x_title, y_title, x_range, y_range):
 
 
 # ============================================================
+# Helper Functions: Multi-Period Chart Creation
+# ============================================================
+
+def create_multi_period_scatter_chart(
+    title, x_title, y_title,
+    x_data_func, y_data_func,
+    hover_template_func,
+    labels,
+    periods=None,
+    colors=None,
+    add_horizontal_ref=True,
+    add_vertical_ref=False
+):
+    """
+    여러 기간 데이터를 표시하는 산점도 차트를 생성합니다.
+
+    Parameters:
+    -----------
+    title : str
+        차트 제목
+    x_title : str
+        X축 제목
+    y_title : str
+        Y축 제목
+    x_data_func : callable
+        period를 받아 해당 기간의 X축 데이터를 반환하는 함수
+    y_data_func : callable
+        period를 받아 해당 기간의 Y축 데이터를 반환하는 함수
+    hover_template_func : callable
+        period를 받아 hover template를 반환하는 함수
+    labels : pd.Index
+        데이터 포인트 라벨 (ticker 이름 등)
+    periods : list, optional
+        표시할 기간 리스트. None이면 settings에서 가져옴
+    colors : list, optional
+        각 기간에 사용할 색상 리스트. None이면 settings에서 가져옴
+    add_horizontal_ref : bool
+        수평 참조선 추가 여부
+    add_vertical_ref : bool
+        수직 참조선 추가 여부
+
+    Returns:
+    --------
+    go.Figure
+        생성된 차트
+    """
+    if periods is None:
+        periods = settings.visualization.scatter_plot.periods
+    if colors is None:
+        colors = settings.visualization.scatter_plot.colors
+
+    # 축 범위 계산
+    all_x_data = [x_data_func(period) for period in periods]
+    all_y_data = [y_data_func(period) for period in periods]
+
+    x_range = calculate_axis_range(pd.concat(all_x_data))
+    y_range = calculate_axis_range(pd.concat(all_y_data))
+
+    # Figure 생성
+    fig = create_base_figure(title, x_title, y_title, x_range, y_range)
+
+    # 각 기간별 trace 추가
+    for period, color in zip(periods, colors):
+        x_data = x_data_func(period)
+        y_data = y_data_func(period)
+
+        add_scatter_trace(
+            fig=fig,
+            x_data=x_data,
+            y_data=y_data,
+            labels=labels,
+            color=color,
+            name=f'{period}개월',
+            hover_template=hover_template_func(period)
+        )
+
+        add_trendline(
+            fig=fig,
+            x_data=x_data,
+            y_data=y_data,
+            color=color,
+            name=f'{period}M 추세선',
+            show_in_legend=False
+        )
+
+    # 참조선
+    add_reference_lines(fig, add_horizontal_ref, add_vertical_ref)
+
+    return fig
+
+
+# ============================================================
 # Chart Creation: Momentum
 # ============================================================
 
 def create_monthly_momentum_chart(momentum):
     """
-    Monthly Momentum 차트를 생성합니다 (1MR vs 13612MR).
+    Monthly Momentum 차트를 생성합니다 (R vs 13612MR, 12개월 기준).
 
     Parameters:
     -----------
@@ -233,41 +413,22 @@ def create_monthly_momentum_chart(momentum):
     go.Figure
         생성된 차트
     """
-    x_data = momentum['1MR']
-    y_data = momentum['13612MR']
+    # 팔레트에서 색상 가져오기 (12개월이므로 첫 번째 색상)
+    palette = settings.visualization.scatter_plot.colors
 
-    # 축 범위 계산
-    x_range = calculate_axis_range(x_data)
-    y_range = calculate_axis_range(y_data)
-
-    # Figure 생성
-    fig = create_base_figure(
+    return create_multi_period_scatter_chart(
         title="Monthly Momentum",
-        x_title="1개월 모멘텀 (1MR)",
+        x_title="Correlation Coefficient (R, 12M)",
         y_title="평균 모멘텀 (13612MR)",
-        x_range=x_range,
-        y_range=y_range
-    )
-
-    # 산점도 추가
-    add_scatter_trace(
-        fig=fig,
-        x_data=x_data,
-        y_data=y_data,
+        x_data_func=lambda p: calculate_correlation_coefficient(momentum, p),
+        y_data_func=lambda p: momentum['13612MR'],
+        hover_template_func=lambda p: '<b>%{text}</b><br>R (12M): %{x:.3f}<br>13612MR: %{y:.2%}<extra></extra>',
         labels=momentum.index,
-        color='royalblue',
-        name='Stocks',
-        hover_template='<b>%{text}</b><br>1MR: %{x:.2%}<br>13612MR: %{y:.2%}<extra></extra>'
+        periods=[12],
+        colors=[palette[0]],
+        add_horizontal_ref=True,
+        add_vertical_ref=True
     )
-
-    # 추세선 추가
-    trendline_color = settings.visualization.scatter_plot.trendline.single_color
-    add_trendline(fig, x_data, y_data, color=trendline_color)
-
-    # 참조선 추가
-    add_reference_lines(fig, add_horizontal=True, add_vertical=True)
-
-    return fig
 
 
 def create_regression_momentum_chart(momentum):
@@ -284,58 +445,17 @@ def create_regression_momentum_chart(momentum):
     go.Figure
         생성된 차트
     """
-    periods = settings.visualization.scatter_plot.periods
-    colors = settings.visualization.scatter_plot.colors
-
-    # 모든 데이터를 수집하여 축 범위 계산
-    all_x_data = []
-    all_y_data = []
-    for period in periods:
-        all_x_data.append(momentum[f'RS{period}'])
-        all_y_data.append(momentum[f'AS{period}'])
-
-    x_range = calculate_axis_range(pd.concat(all_x_data))
-    y_range = calculate_axis_range(pd.concat(all_y_data))
-
-    # Figure 생성
-    fig = create_base_figure(
+    return create_multi_period_scatter_chart(
         title="Regression Momentum",
         x_title="R-squared",
         y_title="Annualized Slope",
-        x_range=x_range,
-        y_range=y_range
+        x_data_func=lambda p: momentum[f'RS{p}'],
+        y_data_func=lambda p: momentum[f'AS{p}'],
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>R²: %{{x:.3f}}<br>Ann. Slope: %{{y:.2%}}<extra></extra>',
+        labels=momentum.index,
+        add_horizontal_ref=True,
+        add_vertical_ref=False
     )
-
-    # 각 기간별 산점도 및 추세선 추가
-    for period, color in zip(periods, colors):
-        x_data = momentum[f'RS{period}']
-        y_data = momentum[f'AS{period}']
-
-        # 산점도
-        add_scatter_trace(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            labels=momentum.index,
-            color=color,
-            name=f'{period}개월',
-            hover_template=f'<b>%{{text}}</b><br>{period}M<br>R²: %{{x:.3f}}<br>Ann. Slope: %{{y:.2%}}<extra></extra>'
-        )
-
-        # 추세선
-        add_trendline(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            color=color,
-            name=f'{period}M 추세선',
-            show_in_legend=False
-        )
-
-    # 참조선 추가
-    add_reference_lines(fig, add_horizontal=True, add_vertical=False)
-
-    return fig
 
 
 def create_momentum_quality_vs_return_chart(momentum, performance):
@@ -354,60 +474,17 @@ def create_momentum_quality_vs_return_chart(momentum, performance):
     go.Figure
         생성된 차트
     """
-    periods = settings.visualization.scatter_plot.periods
-    colors = settings.visualization.scatter_plot.colors
-
-    # 모든 데이터를 수집하여 축 범위 계산
-    all_x_data = []
-    all_y_data = []
-    for period in periods:
-        # √R² × Annualized Slope = R × Annualized Slope
-        momentum_quality = np.sqrt(momentum[f'RS{period}']) * momentum[f'AS{period}']
-        all_x_data.append(momentum_quality)
-        all_y_data.append(performance[f'AR{period}'])
-
-    x_range = calculate_axis_range(pd.concat(all_x_data))
-    y_range = calculate_axis_range(pd.concat(all_y_data))
-
-    # Figure 생성
-    fig = create_base_figure(
+    return create_multi_period_scatter_chart(
         title="Momentum Quality vs Return",
         x_title="Momentum Quality (R × Annualized Slope)",
         y_title="Annualized Return",
-        x_range=x_range,
-        y_range=y_range
+        x_data_func=lambda p: calculate_momentum_quality(momentum, p),
+        y_data_func=lambda p: performance[f'AR{p}'],
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Quality: %{{x:.3f}}<br>AR: %{{y:.2%}}<extra></extra>',
+        labels=momentum.index,
+        add_horizontal_ref=True,
+        add_vertical_ref=False
     )
-
-    # 각 기간별 산점도 및 추세선 추가
-    for period, color in zip(periods, colors):
-        x_data = np.sqrt(momentum[f'RS{period}']) * momentum[f'AS{period}']
-        y_data = performance[f'AR{period}']
-
-        # 산점도
-        add_scatter_trace(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            labels=momentum.index,
-            color=color,
-            name=f'{period}개월',
-            hover_template=f'<b>%{{text}}</b><br>{period}M<br>Quality: %{{x:.3f}}<br>AR: %{{y:.2%}}<extra></extra>'
-        )
-
-        # 추세선
-        add_trendline(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            color=color,
-            name=f'{period}M 추세선',
-            show_in_legend=False
-        )
-
-    # 참조선 추가
-    add_reference_lines(fig, add_horizontal=True, add_vertical=False)
-
-    return fig
 
 
 def create_momentum_strength_vs_return_chart(momentum, performance):
@@ -426,58 +503,17 @@ def create_momentum_strength_vs_return_chart(momentum, performance):
     go.Figure
         생성된 차트
     """
-    periods = settings.visualization.scatter_plot.periods
-    colors = settings.visualization.scatter_plot.colors
-
-    # 모든 데이터를 수집하여 축 범위 계산
-    all_x_data = []
-    all_y_data = []
-    for period in periods:
-        all_x_data.append(momentum[f'AS{period}'])
-        all_y_data.append(performance[f'AR{period}'])
-
-    x_range = calculate_axis_range(pd.concat(all_x_data))
-    y_range = calculate_axis_range(pd.concat(all_y_data))
-
-    # Figure 생성
-    fig = create_base_figure(
+    return create_multi_period_scatter_chart(
         title="Momentum Strength vs Return",
         x_title="Annualized Slope",
         y_title="Annualized Return",
-        x_range=x_range,
-        y_range=y_range
+        x_data_func=lambda p: momentum[f'AS{p}'],
+        y_data_func=lambda p: performance[f'AR{p}'],
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>AS: %{{x:.2%}}<br>AR: %{{y:.2%}}<extra></extra>',
+        labels=momentum.index,
+        add_horizontal_ref=True,
+        add_vertical_ref=False
     )
-
-    # 각 기간별 산점도 및 추세선 추가
-    for period, color in zip(periods, colors):
-        x_data = momentum[f'AS{period}']
-        y_data = performance[f'AR{period}']
-
-        # 산점도
-        add_scatter_trace(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            labels=momentum.index,
-            color=color,
-            name=f'{period}개월',
-            hover_template=f'<b>%{{text}}</b><br>{period}M<br>AS: %{{x:.2%}}<br>AR: %{{y:.2%}}<extra></extra>'
-        )
-
-        # 추세선
-        add_trendline(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            color=color,
-            name=f'{period}M 추세선',
-            show_in_legend=False
-        )
-
-    # 참조선 추가
-    add_reference_lines(fig, add_horizontal=True, add_vertical=False)
-
-    return fig
 
 
 def create_momentum_reliability_vs_return_chart(momentum, performance):
@@ -496,59 +532,17 @@ def create_momentum_reliability_vs_return_chart(momentum, performance):
     go.Figure
         생성된 차트
     """
-    periods = settings.visualization.scatter_plot.periods
-    colors = settings.visualization.scatter_plot.colors
-
-    # 모든 데이터를 수집하여 축 범위 계산
-    all_x_data = []
-    all_y_data = []
-    for period in periods:
-        # √R² = R (상관계수)
-        all_x_data.append(np.sqrt(momentum[f'RS{period}']))
-        all_y_data.append(performance[f'AR{period}'])
-
-    x_range = calculate_axis_range(pd.concat(all_x_data))
-    y_range = calculate_axis_range(pd.concat(all_y_data))
-
-    # Figure 생성
-    fig = create_base_figure(
+    return create_multi_period_scatter_chart(
         title="Momentum Reliability vs Return",
         x_title="Correlation Coefficient (R)",
         y_title="Annualized Return",
-        x_range=x_range,
-        y_range=y_range
+        x_data_func=lambda p: calculate_correlation_coefficient(momentum, p),
+        y_data_func=lambda p: performance[f'AR{p}'],
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>R: %{{x:.3f}}<br>AR: %{{y:.2%}}<extra></extra>',
+        labels=momentum.index,
+        add_horizontal_ref=True,
+        add_vertical_ref=False
     )
-
-    # 각 기간별 산점도 및 추세선 추가
-    for period, color in zip(periods, colors):
-        x_data = np.sqrt(momentum[f'RS{period}'])
-        y_data = performance[f'AR{period}']
-
-        # 산점도
-        add_scatter_trace(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            labels=momentum.index,
-            color=color,
-            name=f'{period}개월',
-            hover_template=f'<b>%{{text}}</b><br>{period}M<br>R: %{{x:.3f}}<br>AR: %{{y:.2%}}<extra></extra>'
-        )
-
-        # 추세선
-        add_trendline(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            color=color,
-            name=f'{period}M 추세선',
-            show_in_legend=False
-        )
-
-    # 참조선 추가
-    add_reference_lines(fig, add_horizontal=True, add_vertical=False)
-
-    return fig
 
 
 # ============================================================
@@ -569,55 +563,17 @@ def create_sharpe_ratio_chart(performance):
     go.Figure
         생성된 차트
     """
-    periods = settings.visualization.scatter_plot.periods
-    colors = settings.visualization.scatter_plot.colors
-
-    # 모든 데이터를 수집하여 축 범위 계산
-    all_x_data = []
-    all_y_data = []
-    for period in periods:
-        all_x_data.append(performance[f'SD{period}'])
-        all_y_data.append(performance[f'AR{period}'])
-
-    x_range = calculate_axis_range(pd.concat(all_x_data))
-    y_range = calculate_axis_range(pd.concat(all_y_data))
-
-    # Figure 생성
-    fig = create_base_figure(
+    return create_multi_period_scatter_chart(
         title="Sharpe Ratio",
         x_title="Standard Deviation",
         y_title="Annualized Return",
-        x_range=x_range,
-        y_range=y_range
+        x_data_func=lambda p: performance[f'SD{p}'],
+        y_data_func=lambda p: performance[f'AR{p}'],
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>SD: %{{x:.2%}}<br>AR: %{{y:.2%}}<extra></extra>',
+        labels=performance.index,
+        add_horizontal_ref=False,
+        add_vertical_ref=False
     )
-
-    # 각 기간별 산점도 및 추세선 추가
-    for period, color in zip(periods, colors):
-        x_data = performance[f'SD{period}']
-        y_data = performance[f'AR{period}']
-
-        # 산점도
-        add_scatter_trace(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            labels=performance.index,
-            color=color,
-            name=f'{period}개월',
-            hover_template=f'<b>%{{text}}</b><br>{period}M<br>SD: %{{x:.2%}}<br>AR: %{{y:.2%}}<extra></extra>'
-        )
-
-        # 추세선
-        add_trendline(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            color=color,
-            name=f'{period}M 추세선',
-            show_in_legend=False
-        )
-
-    return fig
 
 
 def create_sortino_ratio_chart(performance):
@@ -634,55 +590,75 @@ def create_sortino_ratio_chart(performance):
     go.Figure
         생성된 차트
     """
-    periods = settings.visualization.scatter_plot.periods
-    colors = settings.visualization.scatter_plot.colors
-
-    # 모든 데이터를 수집하여 축 범위 계산
-    all_x_data = []
-    all_y_data = []
-    for period in periods:
-        all_x_data.append(performance[f'DD{period}'])
-        all_y_data.append(performance[f'AR{period}'])
-
-    x_range = calculate_axis_range(pd.concat(all_x_data))
-    y_range = calculate_axis_range(pd.concat(all_y_data))
-
-    # Figure 생성
-    fig = create_base_figure(
+    return create_multi_period_scatter_chart(
         title="Sortino Ratio",
         x_title="Downside Deviation",
         y_title="Annualized Return",
-        x_range=x_range,
-        y_range=y_range
+        x_data_func=lambda p: performance[f'DD{p}'],
+        y_data_func=lambda p: performance[f'AR{p}'],
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>DD: %{{x:.2%}}<br>AR: %{{y:.2%}}<extra></extra>',
+        labels=performance.index,
+        add_horizontal_ref=False,
+        add_vertical_ref=False
     )
 
-    # 각 기간별 산점도 및 추세선 추가
-    for period, color in zip(periods, colors):
-        x_data = performance[f'DD{period}']
-        y_data = performance[f'AR{period}']
 
-        # 산점도
-        add_scatter_trace(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            labels=performance.index,
-            color=color,
-            name=f'{period}개월',
-            hover_template=f'<b>%{{text}}</b><br>{period}M<br>DD: %{{x:.2%}}<br>AR: %{{y:.2%}}<extra></extra>'
-        )
+def create_momentum_quality_vs_sharpe_chart(momentum, performance):
+    """
+    Momentum Quality vs Sharpe Ratio 차트를 생성합니다 (R × AS vs AR/SD).
 
-        # 추세선
-        add_trendline(
-            fig=fig,
-            x_data=x_data,
-            y_data=y_data,
-            color=color,
-            name=f'{period}M 추세선',
-            show_in_legend=False
-        )
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        Momentum 데이터
+    performance : pd.DataFrame
+        Performance 데이터
 
-    return fig
+    Returns:
+    --------
+    go.Figure
+        생성된 차트
+    """
+    return create_multi_period_scatter_chart(
+        title="Momentum Quality vs Sharpe Ratio",
+        x_title="Momentum Quality (R × Annualized Slope)",
+        y_title="Sharpe Ratio (AR / SD)",
+        x_data_func=lambda p: calculate_momentum_quality(momentum, p),
+        y_data_func=lambda p: calculate_sharpe_ratio(performance, p),
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Quality: %{{x:.3f}}<br>Sharpe: %{{y:.3f}}<extra></extra>',
+        labels=momentum.index,
+        add_horizontal_ref=False,
+        add_vertical_ref=False
+    )
+
+
+def create_momentum_quality_vs_sortino_chart(momentum, performance):
+    """
+    Momentum Quality vs Sortino Ratio 차트를 생성합니다 (R × AS vs AR/DD).
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        Momentum 데이터
+    performance : pd.DataFrame
+        Performance 데이터
+
+    Returns:
+    --------
+    go.Figure
+        생성된 차트
+    """
+    return create_multi_period_scatter_chart(
+        title="Momentum Quality vs Sortino Ratio",
+        x_title="Momentum Quality (R × Annualized Slope)",
+        y_title="Sortino Ratio (AR / DD)",
+        x_data_func=lambda p: calculate_momentum_quality(momentum, p),
+        y_data_func=lambda p: calculate_sortino_ratio(performance, p),
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Quality: %{{x:.3f}}<br>Sortino: %{{y:.3f}}<extra></extra>',
+        labels=momentum.index,
+        add_horizontal_ref=False,
+        add_vertical_ref=False
+    )
 
 
 # ============================================================
@@ -728,12 +704,14 @@ def create_momentum_dashboard(momentum, performance):
 # Dashboard Creation: Performance
 # ============================================================
 
-def create_performance_dashboard(performance):
+def create_performance_dashboard(momentum, performance):
     """
     Performance 대시보드를 생성하고 저장합니다.
 
     Parameters:
     -----------
+    momentum : pd.DataFrame
+        Momentum 데이터
     performance : pd.DataFrame
         Performance 데이터
     """
@@ -743,16 +721,18 @@ def create_performance_dashboard(performance):
     dashboard_dir = settings.output.dashboard_dir
     Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
 
-    # 차트 생성
+    # 차트 생성 (총 4개)
     chart_sharpe = create_sharpe_ratio_chart(performance)
     chart_sortino = create_sortino_ratio_chart(performance)
+    chart_quality_sharpe = create_momentum_quality_vs_sharpe_chart(momentum, performance)
+    chart_quality_sortino = create_momentum_quality_vs_sortino_chart(momentum, performance)
 
     # HTML 저장
     html_path = f'{dashboard_dir}/performance.html'
     render_dashboard_html(
         title="KRX300 Performance Analysis",
-        figures=[chart_sharpe, chart_sortino],
-        chart_ids=['chart1', 'chart2'],
+        figures=[chart_sharpe, chart_sortino, chart_quality_sharpe, chart_quality_sortino],
+        chart_ids=['chart1', 'chart2', 'chart3', 'chart4'],
         output_path=html_path
     )
     print(f"  ✓ {html_path}")
@@ -908,7 +888,7 @@ def create_correlation_network(correlation):
     Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
 
     # marginal_mean 제거하고 실제 종목들만
-    corr_matrix = correlation.drop('mean', axis=0).drop('mean', axis=1)
+    corr_matrix = correlation.drop(MARGINAL_MEAN_COLUMN, axis=0).drop(MARGINAL_MEAN_COLUMN, axis=1)
     tickers = corr_matrix.index.tolist()
 
     # 그래프 생성
@@ -926,7 +906,7 @@ def create_correlation_network(correlation):
     print(f"  클러스터: {n_clusters}개")
 
     # VOSviewer JSON 생성
-    marginal_means = correlation.loc[tickers, 'mean']
+    marginal_means = correlation.loc[tickers, MARGINAL_MEAN_COLUMN]
     vos_data = create_vosviewer_json(graph, node_to_cluster, marginal_means, threshold)
 
     # JSON 저장
@@ -1055,7 +1035,7 @@ def create_correlation_cluster(correlation):
     Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
 
     # marginal_mean 제거
-    corr_matrix = correlation.drop('mean', axis=0).drop('mean', axis=1)
+    corr_matrix = correlation.drop(MARGINAL_MEAN_COLUMN, axis=0).drop(MARGINAL_MEAN_COLUMN, axis=1)
     tickers = corr_matrix.index.tolist()
 
     # 계층적 클러스터링
@@ -1139,7 +1119,7 @@ def main():
 
     # 대시보드 생성
     create_momentum_dashboard(momentum, performance)
-    create_performance_dashboard(performance)
+    create_performance_dashboard(momentum, performance)
     create_correlation_network(correlation)
     create_correlation_cluster(correlation)
 
