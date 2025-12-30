@@ -291,8 +291,10 @@ def create_base_figure(title, x_title, y_title, x_range, y_range):
     go.Figure
         설정된 Figure 객체
     """
-    layout_style = settings.visualization.scatter_plot.layout
-    height = settings.dashboard.height
+    scatter_config = settings.visualization.scatter_plot
+    layout_style = scatter_config.layout
+    height = scatter_config.height
+    width = scatter_config.width
 
     fig = go.Figure()
     fig.update_layout(
@@ -302,6 +304,7 @@ def create_base_figure(title, x_title, y_title, x_range, y_range):
         xaxis_range=x_range,
         yaxis_range=y_range,
         height=height,
+        width=width,
         showlegend=layout_style.showlegend,
         hovermode=layout_style.hovermode
     )
@@ -1004,8 +1007,9 @@ def create_dendrogram_figure(distance_matrix, tickers, method):
     go.Figure
         생성된 덴드로그램
     """
-    width = settings.dashboard.width
-    height_per_item = settings.visualization.dendrogram.height_per_item
+    dendrogram_config = settings.visualization.dendrogram
+    width = dendrogram_config.width
+    height_per_item = dendrogram_config.height_per_item
 
     fig = ff.create_dendrogram(
         distance_matrix.values,

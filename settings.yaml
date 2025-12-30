@@ -28,6 +28,10 @@ visualization:
       - "#4ECDC4"  # 36개월 - 청록
       - "royalblue"  # 60개월 - 파랑
 
+    # 차트 크기
+    height: 600
+    width: 800
+
     # Marker 스타일
     marker:
       size: 8
@@ -65,11 +69,7 @@ visualization:
     method: ward
     n_cluster: 25
     height_per_item: 15  # Dendrogram 항목당 높이
-
-# Dashboard 크기
-dashboard:
-  height: 600
-  width: 1000
+    width: 1000  # Dendrogram 너비
 
 # 출력 설정
 output:
