@@ -1,0 +1,69 @@
+name: Deploy KRX300 Analysis to GitHub Pages
+
+on:
+  # 수동 실행
+  workflow_dispatch:
+  # 스케줄 실행 (매월 1일 오전 10시 KST = 1시 UTC)
+  schedule:
+    - cron: '0 1 1 * *'
+  # main 브랜치에 push 시
+  push:
+    branches:
+      - master
+
+# GitHub Pages 배포 권한
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 동시 실행 방지
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run analysis
+        run: uv run python step_all.py
+        continue-on-error: false
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './output'
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
