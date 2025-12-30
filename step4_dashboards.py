@@ -412,7 +412,7 @@ def create_multi_period_scatter_chart(
 
 def create_monthly_momentum_chart(momentum):
     """
-    Monthly Momentum 차트를 생성합니다 (R vs 13612MR, 12개월 기준).
+    Correlation vs Average Momentum 차트를 생성합니다 (R vs 13612MR, 12개월 기준).
 
     Parameters:
     -----------
@@ -428,12 +428,12 @@ def create_monthly_momentum_chart(momentum):
     palette = settings.visualization.scatter_plot.colors
 
     return create_multi_period_scatter_chart(
-        title="Monthly Momentum",
-        x_title="Correlation Coefficient (R, 12M)",
-        y_title="평균 모멘텀 (13612MR)",
+        title="Correlation vs Average Momentum",
+        x_title="Correlation Coefficient (R)",
+        y_title="Average Momentum (13612MR)",
         x_data_func=lambda p: calculate_correlation_coefficient(momentum, p),
         y_data_func=lambda p: momentum['13612MR'],
-        hover_template_func=lambda p: '<b>%{text}</b><br>R (12M): %{x:.3f}<br>13612MR: %{y:.2%}<extra></extra>',
+        hover_template_func=lambda p: '<b>%{text}</b><br>R: %{x:.3f}<br>Avg Momentum: %{y:.2%}<extra></extra>',
         labels=momentum.index,
         periods=[12],
         colors=[palette[0]],
@@ -458,11 +458,11 @@ def create_regression_momentum_chart(momentum):
     """
     return create_multi_period_scatter_chart(
         title="Regression Momentum",
-        x_title="R-squared",
-        y_title="Annualized Slope",
+        x_title="R-squared (Reliability)",
+        y_title="Annualized Slope (Strength)",
         x_data_func=lambda p: momentum[f'RS{p}'],
         y_data_func=lambda p: momentum[f'AS{p}'],
-        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>R²: %{{x:.3f}}<br>Ann. Slope: %{{y:.2%}}<extra></extra>',
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>R²: %{{x:.3f}}<br>Slope: %{{y:.2%}}<extra></extra>',
         labels=momentum.index,
         add_horizontal_ref=True,
         add_vertical_ref=False
@@ -471,7 +471,7 @@ def create_regression_momentum_chart(momentum):
 
 def create_momentum_quality_vs_return_chart(momentum, performance):
     """
-    Momentum Quality vs Return 차트를 생성합니다 (R × AS vs AR).
+    Momentum Quality vs Return 차트를 생성합니다 (Momentum Quality vs AR).
 
     Parameters:
     -----------
@@ -487,11 +487,11 @@ def create_momentum_quality_vs_return_chart(momentum, performance):
     """
     return create_multi_period_scatter_chart(
         title="Momentum Quality vs Return",
-        x_title="Momentum Quality (R × Annualized Slope)",
+        x_title="Momentum Quality (R × Slope)",
         y_title="Annualized Return",
         x_data_func=lambda p: calculate_momentum_quality(momentum, p),
         y_data_func=lambda p: performance[f'AR{p}'],
-        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Quality: %{{x:.3f}}<br>AR: %{{y:.2%}}<extra></extra>',
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Quality: %{{x:.3f}}<br>Return: %{{y:.2%}}<extra></extra>',
         labels=momentum.index,
         add_horizontal_ref=True,
         add_vertical_ref=False
@@ -500,7 +500,7 @@ def create_momentum_quality_vs_return_chart(momentum, performance):
 
 def create_momentum_strength_vs_return_chart(momentum, performance):
     """
-    Momentum Strength vs Return 차트를 생성합니다 (AS vs AR).
+    Momentum Strength vs Return 차트를 생성합니다 (Annualized Slope vs AR).
 
     Parameters:
     -----------
@@ -516,11 +516,11 @@ def create_momentum_strength_vs_return_chart(momentum, performance):
     """
     return create_multi_period_scatter_chart(
         title="Momentum Strength vs Return",
-        x_title="Annualized Slope",
+        x_title="Momentum Strength (Annualized Slope)",
         y_title="Annualized Return",
         x_data_func=lambda p: momentum[f'AS{p}'],
         y_data_func=lambda p: performance[f'AR{p}'],
-        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>AS: %{{x:.2%}}<br>AR: %{{y:.2%}}<extra></extra>',
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Slope: %{{x:.2%}}<br>Return: %{{y:.2%}}<extra></extra>',
         labels=momentum.index,
         add_horizontal_ref=True,
         add_vertical_ref=False
@@ -529,7 +529,7 @@ def create_momentum_strength_vs_return_chart(momentum, performance):
 
 def create_momentum_reliability_vs_return_chart(momentum, performance):
     """
-    Momentum Reliability vs Return 차트를 생성합니다 (R vs AR).
+    Momentum Reliability vs Return 차트를 생성합니다 (Correlation Coefficient vs AR).
 
     Parameters:
     -----------
@@ -545,11 +545,11 @@ def create_momentum_reliability_vs_return_chart(momentum, performance):
     """
     return create_multi_period_scatter_chart(
         title="Momentum Reliability vs Return",
-        x_title="Correlation Coefficient (R)",
+        x_title="Momentum Reliability (Correlation R)",
         y_title="Annualized Return",
         x_data_func=lambda p: calculate_correlation_coefficient(momentum, p),
         y_data_func=lambda p: performance[f'AR{p}'],
-        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>R: %{{x:.3f}}<br>AR: %{{y:.2%}}<extra></extra>',
+        hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>R: %{{x:.3f}}<br>Return: %{{y:.2%}}<extra></extra>',
         labels=momentum.index,
         add_horizontal_ref=True,
         add_vertical_ref=False
@@ -562,7 +562,7 @@ def create_momentum_reliability_vs_return_chart(momentum, performance):
 
 def create_sharpe_ratio_chart(performance):
     """
-    Sharpe Ratio 차트를 생성합니다 (SD vs AR).
+    Risk-Return Analysis 차트를 생성합니다 (SD vs AR, Sharpe Ratio 구성 요소).
 
     Parameters:
     -----------
@@ -575,8 +575,8 @@ def create_sharpe_ratio_chart(performance):
         생성된 차트
     """
     return create_multi_period_scatter_chart(
-        title="Sharpe Ratio",
-        x_title="Standard Deviation",
+        title="Risk-Return Analysis (Sharpe Ratio)",
+        x_title="Standard Deviation (Risk)",
         y_title="Annualized Return",
         x_data_func=lambda p: performance[f'SD{p}'],
         y_data_func=lambda p: performance[f'AR{p}'],
@@ -589,7 +589,7 @@ def create_sharpe_ratio_chart(performance):
 
 def create_sortino_ratio_chart(performance):
     """
-    Sortino Ratio 차트를 생성합니다 (DD vs AR).
+    Downside Risk-Return Analysis 차트를 생성합니다 (DD vs AR, Sortino Ratio 구성 요소).
 
     Parameters:
     -----------
@@ -602,8 +602,8 @@ def create_sortino_ratio_chart(performance):
         생성된 차트
     """
     return create_multi_period_scatter_chart(
-        title="Sortino Ratio",
-        x_title="Downside Deviation",
+        title="Downside Risk-Return Analysis (Sortino Ratio)",
+        x_title="Downside Deviation (Downside Risk)",
         y_title="Annualized Return",
         x_data_func=lambda p: performance[f'DD{p}'],
         y_data_func=lambda p: performance[f'AR{p}'],
@@ -616,7 +616,7 @@ def create_sortino_ratio_chart(performance):
 
 def create_momentum_quality_vs_sharpe_chart(momentum, performance):
     """
-    Momentum Quality vs Sharpe Ratio 차트를 생성합니다 (R × AS vs AR/SD).
+    Momentum Quality vs Sharpe Ratio 차트를 생성합니다 (R × AS vs Sharpe Ratio).
 
     Parameters:
     -----------
@@ -632,8 +632,8 @@ def create_momentum_quality_vs_sharpe_chart(momentum, performance):
     """
     return create_multi_period_scatter_chart(
         title="Momentum Quality vs Sharpe Ratio",
-        x_title="Momentum Quality (R × Annualized Slope)",
-        y_title="Sharpe Ratio (AR / SD)",
+        x_title="Momentum Quality (R × Slope)",
+        y_title="Sharpe Ratio (Return / Risk)",
         x_data_func=lambda p: calculate_momentum_quality(momentum, p),
         y_data_func=lambda p: calculate_sharpe_ratio(performance, p),
         hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Quality: %{{x:.3f}}<br>Sharpe: %{{y:.3f}}<extra></extra>',
@@ -645,7 +645,7 @@ def create_momentum_quality_vs_sharpe_chart(momentum, performance):
 
 def create_momentum_quality_vs_sortino_chart(momentum, performance):
     """
-    Momentum Quality vs Sortino Ratio 차트를 생성합니다 (R × AS vs AR/DD).
+    Momentum Quality vs Sortino Ratio 차트를 생성합니다 (R × AS vs Sortino Ratio).
 
     Parameters:
     -----------
@@ -661,8 +661,8 @@ def create_momentum_quality_vs_sortino_chart(momentum, performance):
     """
     return create_multi_period_scatter_chart(
         title="Momentum Quality vs Sortino Ratio",
-        x_title="Momentum Quality (R × Annualized Slope)",
-        y_title="Sortino Ratio (AR / DD)",
+        x_title="Momentum Quality (R × Slope)",
+        y_title="Sortino Ratio (Return / Downside Risk)",
         x_data_func=lambda p: calculate_momentum_quality(momentum, p),
         y_data_func=lambda p: calculate_sortino_ratio(performance, p),
         hover_template_func=lambda p: f'<b>%{{text}}</b><br>{p}M<br>Quality: %{{x:.3f}}<br>Sortino: %{{y:.3f}}<extra></extra>',
