@@ -79,6 +79,7 @@ output:
   list_dir: "output/list"
   price_dir: "output/price"
   signal_dir: "output/signal"
+  portfolio_dir: "output/portfolios"
   dashboard_dir: "output/dashboard"
 
   # HTML 설정

@@ -11,88 +11,179 @@ from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
 
 
-def calculate_composite_scores(momentum, performance):
+def calculate_average_momentum(momentum):
     """
-    복합 점수 계산
+    평균 모멘텀 계산 (13612MR)
 
     Parameters:
     -----------
     momentum : pd.DataFrame
         Momentum 데이터
-    performance : pd.DataFrame
-        Performance 데이터
 
     Returns:
     --------
-    pd.DataFrame
-        복합 점수 데이터
+    pd.Series
+        평균 모멘텀
     """
-    scores = pd.DataFrame(index=momentum.index)
-
-    # TODO: 복합 점수 계산 로직 구현
-    # 예시:
-    # - Momentum Quality (R × AS)
-    # - Sharpe Ratio
-    # - Sortino Ratio
-    # - 가중 평균 점수 등
-
-    return scores
+    return momentum['13612MR']
 
 
-def select_stocks(scores, criteria):
+def calculate_average_rsquared(momentum):
     """
-    종목 선택 및 순위 매기기
+    평균 R-squared 계산: (1 + √RS3 + √RS6 + √RS12) / 4
 
     Parameters:
     -----------
-    scores : pd.DataFrame
-        복합 점수 데이터
-    criteria : dict
-        선택 기준 (임계값, 개수 등)
+    momentum : pd.DataFrame
+        Momentum 데이터
+
+    Returns:
+    --------
+    pd.Series
+        평균 R-squared
+    """
+    return (1 + np.sqrt(momentum['RS3']) + np.sqrt(momentum['RS6']) +
+            np.sqrt(momentum['RS12'])) / 4
+
+
+def calculate_marginal_mean(correlation_matrix, tickers):
+    """
+    선택된 종목들 간의 marginal mean 계산
+
+    Parameters:
+    -----------
+    correlation_matrix : pd.DataFrame
+        전체 상관관계 행렬
+    tickers : list
+        선택된 종목 리스트
+
+    Returns:
+    --------
+    pd.Series
+        각 종목의 marginal mean (자기 자신 제외한 평균 상관계수)
+    """
+    # 선택된 종목들만 추출
+    sub_corr = correlation_matrix.loc[tickers, tickers]
+
+    # 각 종목의 marginal mean 계산 (자기 자신 제외)
+    n = len(tickers)
+    marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
+
+    return marginal_means
+
+
+def select_stocks_strategy1(momentum, correlation):
+    """
+    전략 1에 따른 종목 선택
+
+    전략:
+    1. 평균 모멘텀(13612MR) 상위 1/2
+    2. 평균 R-squared 상위 1/2
+    3. Marginal mean 하위 1/3
+    최종: 전체의 1/12
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        Momentum 데이터
+    correlation : pd.DataFrame
+        Correlation matrix
 
     Returns:
     --------
     pd.DataFrame
-        선택된 종목 리스트 (순위 포함)
+        선택된 종목 정보 (평균 모멘텀, 평균 R-squared, marginal mean 포함)
     """
-    selected = pd.DataFrame(index=scores.index)
+    total_stocks = len(momentum)
 
-    # TODO: 종목 선택 로직 구현
-    # 예시:
-    # - 상위 N개 종목 선택
-    # - 특정 점수 이상 종목 선택
-    # - 다중 조건 필터링
+    # Step 1: 평균 모멘텀 상위 1/2
+    avg_momentum = calculate_average_momentum(momentum)
+    step1_count = total_stocks // 2
+    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
+    print(f"      Step 1: 평균 모멘텀 상위 1/2 → {len(step1_tickers)}개 종목")
+
+    # Step 2: 평균 R-squared 상위 1/2
+    avg_rsquared = calculate_average_rsquared(momentum)
+    step2_candidates = avg_rsquared[step1_tickers]
+    step2_count = len(step1_tickers) // 2
+    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
+    print(f"      Step 2: 평균 R-squared 상위 1/2 → {len(step2_tickers)}개 종목")
+
+    # Step 3: Marginal mean 하위 1/3 (상관관계가 낮은 종목)
+    # correlation에서 'mean' 컬럼/행 제거 (step3에서 추가된 것)
+    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
+    marginal_means = calculate_marginal_mean(corr_matrix, step2_tickers)
+    step3_count = len(step2_tickers) // 3
+    step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
+    print(f"      Step 3: Marginal mean 하위 1/3 → {len(step3_tickers)}개 종목")
+
+    # 최종 선택 종목 정보
+    selected = pd.DataFrame(index=step3_tickers)
+    selected['avg_momentum'] = avg_momentum[step3_tickers]
+    selected['avg_rsquared'] = avg_rsquared[step3_tickers]
+    selected['marginal_mean'] = marginal_means[step3_tickers]
+
+    print(f"      최종: {len(selected)}개 종목 (전체 {total_stocks}개의 {len(selected)/total_stocks:.1%})")
 
     return selected
 
 
-def construct_portfolio(selected_stocks, weights_method='equal'):
+def construct_portfolio(selected_stocks, tickers_info):
     """
-    포트폴리오 구성
+    포트폴리오 구성 (동일 비중, 음수 모멘텀은 현금)
+
+    전략:
+    - 기본: 동일 비중 (1/N)
+    - 평균 모멘텀 < 0: 해당 비중만큼 현금 보유
 
     Parameters:
     -----------
     selected_stocks : pd.DataFrame
-        선택된 종목 리스트
-    weights_method : str
-        가중치 계산 방법 ('equal', 'score_weighted', 'risk_parity' 등)
+        선택된 종목 리스트 (avg_momentum 포함)
+    tickers_info : pd.DataFrame
+        종목 정보 (Code, Name 포함)
 
     Returns:
     --------
     pd.DataFrame
-        포트폴리오 구성 (종목, 가중치)
+        포트폴리오 구성 (No, Ticker, Name, Weight 컬럼)
     """
-    portfolio = pd.DataFrame(index=selected_stocks.index)
+    n_stocks = len(selected_stocks)
+    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
 
-    # TODO: 포트폴리오 가중치 계산 로직 구현
-    # 예시:
-    # - Equal weight: 1/N
-    # - Score weighted: 점수 비율
-    # - Risk parity: 리스크 기반 가중치
+    # 종목명 매핑
+    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
 
-    if weights_method == 'equal':
-        n_stocks = len(selected_stocks)
-        portfolio['weight'] = 1.0 / n_stocks if n_stocks > 0 else 0
+    # 투자 비중 계산
+    weights = []
+    for ticker in selected_stocks.index:
+        avg_momentum = selected_stocks.loc[ticker, 'avg_momentum']
+        weight = equal_weight if avg_momentum >= 0 else 0.0
+        weights.append({
+            'Ticker': ticker,
+            'Name': ticker_to_name.get(ticker, ''),
+            'Weight': weight
+        })
+
+    # DataFrame 생성
+    portfolio = pd.DataFrame(weights)
+    portfolio.index = range(1, len(portfolio) + 1)
+    portfolio.index.name = 'No'
+
+    # Cash 행 추가
+    total_invested = portfolio['Weight'].sum()
+    cash_weight = 1.0 - total_invested
+    cash_row = pd.DataFrame([{
+        'Ticker': 'Cash',
+        'Name': '',
+        'Weight': cash_weight
+    }], index=[''])
+    portfolio = pd.concat([portfolio, cash_row])
+
+    # 요약 정보
+    n_invested = (portfolio['Weight'] > 0).sum() - 1  # Cash 제외
+    print(f"      투자 종목: {n_invested}개 ({total_invested:.1%})")
+    print(f"      현금 보유: {cash_weight:.1%}")
 
     return portfolio
 
@@ -101,38 +192,34 @@ def main():
     print_step_header(4, "종목 선택 및 포트폴리오 구성")
 
     # 설정 로드
+    market = settings.data.market
+    list_dir = settings.output.list_dir
     signal_dir = settings.output.signal_dir
-    # output_dir = settings.output.portfolio_dir  # TODO: settings.yaml에 추가 필요
+    portfolio_base_dir = settings.output.portfolio_dir
+    strategy_name = "strategy1"  # 전략 1
+    output_dir = f"{portfolio_base_dir}/{strategy_name}"
 
-    # 1. Signal 데이터 로드
-    print_progress(1, 4, "Signal 데이터 로드...")
+    # 1. 종목 리스트 및 Signal 데이터 로드
+    print_progress(1, 3, "데이터 로드...")
+    tickers_info = import_dataframe_from_json(f'{list_dir}/{market}_list.json')
     momentum = import_dataframe_from_json(f'{signal_dir}/momentum.json')
-    performance = import_dataframe_from_json(f'{signal_dir}/performance.json')
+    correlation = import_dataframe_from_json(f'{signal_dir}/correlation.json')
+    print(f"      Tickers: {tickers_info.shape}")
     print(f"      Momentum: {momentum.shape}")
-    print(f"      Performance: {performance.shape}")
+    print(f"      Correlation: {correlation.shape}")
 
-    # 2. 복합 점수 계산
-    print_progress(2, 4, "복합 점수 계산...")
-    scores = calculate_composite_scores(momentum, performance)
-    print(f"      완료: {scores.shape}")
+    # 2. 종목 선택 (전략 1)
+    print_progress(2, 3, "종목 선택 (전략 1)...")
+    selected = select_stocks_strategy1(momentum, correlation)
 
-    # 3. 종목 선택
-    print_progress(3, 4, "종목 선택...")
-    criteria = {}  # TODO: 선택 기준 정의
-    selected = select_stocks(scores, criteria)
-    print(f"      선택된 종목: {len(selected)}개")
+    # 3. 포트폴리오 구성
+    print_progress(3, 3, "포트폴리오 구성...")
+    portfolio = construct_portfolio(selected, tickers_info)
 
-    # 4. 포트폴리오 구성
-    print_progress(4, 4, "포트폴리오 구성...")
-    portfolio = construct_portfolio(selected, weights_method='equal')
-    print(f"      완료: {portfolio.shape}")
-
-    # 5. 저장
-    print("\n파일 저장 (HTML, TSV, JSON)...")
-
-    export_with_message(scores, f'{signal_dir}/scores', 'Composite Scores')
-    export_with_message(selected, f'{signal_dir}/selected', 'Selected Stocks')
-    export_with_message(portfolio, f'{signal_dir}/portfolio', 'Portfolio Composition')
+    # 4. 저장
+    print(f"\n파일 저장 (HTML, TSV, JSON) → {output_dir}/...")
+    export_with_message(selected, f'{output_dir}/selected', 'Selected Stocks')
+    export_with_message(portfolio, f'{output_dir}/portfolio', 'Portfolio Composition')
 
     print_completion(4)
 
