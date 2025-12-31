@@ -5,7 +5,7 @@ STEP 1: KRX300 종목 리스트 생성
 """
 
 from core.fetcher import get_list
-from core.file import export_dataframe_to_formats
+from core.file import export_dataframe_to_formats, export_dataframe_to_datatable
 from core.config import settings
 from core.utils import print_step_header, print_completion
 
@@ -32,9 +32,17 @@ def main():
     list_dir = settings.output.list_dir.path
     export_dataframe_to_formats(
         df,
-        f'{list_dir}/{market}_list',
+        f'{list_dir}/{market}',
         f'{market.upper()} 종목 리스트',
         include_index=False
+    )
+
+    # DataTables 인터랙티브 버전 추가
+    print("\n인터랙티브 테이블 생성 (DataTables)...")
+    export_dataframe_to_datatable(
+        df.set_index('Code'),  # Code를 index로 설정
+        f'{list_dir}/{market}',
+        f'{market.upper()} 종목 리스트 - Interactive Table'
     )
 
     print_completion(1)

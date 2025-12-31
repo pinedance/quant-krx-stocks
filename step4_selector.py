@@ -6,7 +6,7 @@ STEP 4: 종목 선택 및 포트폴리오 구성
 
 import pandas as pd
 import numpy as np
-from core.file import import_dataframe_from_json, export_with_message
+from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
 
@@ -72,7 +72,7 @@ def calculate_marginal_mean(correlation_matrix, tickers):
     return marginal_means
 
 
-def select_stocks_strategy1(momentum, correlation):
+def select_stocks_strategy1(momentum, correlation, tickers_info):
     """
     전략 1에 따른 종목 선택
 
@@ -88,11 +88,13 @@ def select_stocks_strategy1(momentum, correlation):
         Momentum 데이터
     correlation : pd.DataFrame
         Correlation matrix
+    tickers_info : pd.DataFrame
+        종목 정보 (Code, Name 포함)
 
     Returns:
     --------
     pd.DataFrame
-        선택된 종목 정보 (평균 모멘텀, 평균 R-squared, marginal mean 포함)
+        선택된 종목 정보 (Ticker, Name, 평균 모멘텀, 평균 R-squared, marginal mean 포함)
     """
     total_stocks = len(momentum)
 
@@ -117,18 +119,29 @@ def select_stocks_strategy1(momentum, correlation):
     step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
     print(f"      Step 3: Marginal mean 하위 1/3 → {len(step3_tickers)}개 종목")
 
+    # 종목명 매핑
+    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
+
     # 최종 선택 종목 정보
-    selected = pd.DataFrame(index=step3_tickers)
-    selected['avg_momentum'] = avg_momentum[step3_tickers]
-    selected['avg_rsquared'] = avg_rsquared[step3_tickers]
-    selected['marginal_mean'] = marginal_means[step3_tickers]
+    selected_data = []
+    for ticker in step3_tickers:
+        selected_data.append({
+            'Ticker': f'S{ticker}',
+            'Name': ticker_to_name.get(ticker, ''),
+            'avg_momentum': avg_momentum[ticker],
+            'avg_rsquared': avg_rsquared[ticker],
+            'marginal_mean': marginal_means[ticker]
+        })
+
+    selected = pd.DataFrame(selected_data)
+    selected = selected.set_index('Ticker')
 
     print(f"      최종: {len(selected)}개 종목 (전체 {total_stocks}개의 {len(selected)/total_stocks:.1%})")
 
     return selected
 
 
-def construct_portfolio(selected_stocks, tickers_info):
+def construct_portfolio(selected_stocks):
     """
     포트폴리오 구성 (동일 비중, 음수 모멘텀은 현금)
 
@@ -139,9 +152,7 @@ def construct_portfolio(selected_stocks, tickers_info):
     Parameters:
     -----------
     selected_stocks : pd.DataFrame
-        선택된 종목 리스트 (avg_momentum 포함)
-    tickers_info : pd.DataFrame
-        종목 정보 (Code, Name 포함)
+        선택된 종목 리스트 (Ticker index, Name, avg_momentum 포함)
 
     Returns:
     --------
@@ -151,22 +162,23 @@ def construct_portfolio(selected_stocks, tickers_info):
     n_stocks = len(selected_stocks)
     equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
 
-    # 종목명 매핑
-    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
-
     # 투자 비중 계산
     weights = []
     for ticker in selected_stocks.index:
         avg_momentum = selected_stocks.loc[ticker, 'avg_momentum']
+        name = selected_stocks.loc[ticker, 'Name']
         weight = equal_weight if avg_momentum >= 0 else 0.0
         weights.append({
-            'Ticker': ticker,
-            'Name': ticker_to_name.get(ticker, ''),
+            'Ticker': ticker,  # 이미 'S' prefix 포함
+            'Name': name,
             'Weight': weight
         })
 
-    # DataFrame 생성
+    # DataFrame 생성 및 Ticker 기준 오름차순 정렬
     portfolio = pd.DataFrame(weights)
+    portfolio = portfolio.sort_values('Ticker')
+
+    # 정렬 후 index 재설정
     portfolio.index = range(1, len(portfolio) + 1)
     portfolio.index.name = 'No'
 
@@ -201,7 +213,7 @@ def main():
 
     # 1. 종목 리스트 및 Signal 데이터 로드
     print_progress(1, 3, "데이터 로드...")
-    tickers_info = import_dataframe_from_json(f'{list_dir}/{market}_list.json')
+    tickers_info = import_dataframe_from_json(f'{list_dir}/{market}.json')
     momentum = import_dataframe_from_json(f'{signal_dir}/momentum.json')
     correlation = import_dataframe_from_json(f'{signal_dir}/correlation.json')
     print(f"      Tickers: {tickers_info.shape}")
@@ -210,16 +222,20 @@ def main():
 
     # 2. 종목 선택 (전략 1)
     print_progress(2, 3, "종목 선택 (전략 1)...")
-    selected = select_stocks_strategy1(momentum, correlation)
+    selected = select_stocks_strategy1(momentum, correlation, tickers_info)
 
     # 3. 포트폴리오 구성
     print_progress(3, 3, "포트폴리오 구성...")
-    portfolio = construct_portfolio(selected, tickers_info)
+    portfolio = construct_portfolio(selected)
 
     # 4. 저장
     print(f"\n파일 저장 (HTML, TSV, JSON) → {output_dir}/...")
     export_with_message(selected, f'{output_dir}/selected', 'Selected Stocks')
     export_with_message(portfolio, f'{output_dir}/portfolio', 'Portfolio Composition')
+
+    # DataTables 인터랙티브 버전 추가
+    print(f"\n인터랙티브 테이블 생성 (DataTables)...")
+    export_dataframe_to_datatable(selected, f'{output_dir}/selected', 'Selected Stocks - Interactive Table')
 
     print_completion(4)
 

@@ -3,7 +3,7 @@ STEP 2: KRX300 데이터 생성 및 저장
 """
 
 from core.fetcher import get_price
-from core.file import import_dataframe_from_json, export_with_message
+from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.utils import date_before, print_step_header, print_progress, print_completion
 from core.config import settings
 
@@ -23,7 +23,7 @@ def main():
     # 1. 종목 리스트
     print_progress(1, 4, "종목 리스트 가져오기...")
     market = settings.data.market
-    tickers = import_dataframe_from_json(f'{list_dir}/{market}_list.json')
+    tickers = import_dataframe_from_json(f'{list_dir}/{market}.json')
     print(f"      총 {len(tickers)}개 종목")
 
     # 2. 가격 데이터 다운로드
@@ -59,6 +59,11 @@ def main():
 
     export_with_message(closeD, f'{price_dir}/closeD', 'Daily Price (전체)')
     export_with_message(closeM, f'{price_dir}/closeM', 'Monthly Price')
+
+    # DataTables 인터랙티브 버전 추가
+    print("\n인터랙티브 테이블 생성 (DataTables)...")
+    export_dataframe_to_datatable(closeD, f'{price_dir}/closeD', 'Daily Price - Interactive Table')
+    export_dataframe_to_datatable(closeM, f'{price_dir}/closeM', 'Monthly Price - Interactive Table')
 
     print_completion(2)
 

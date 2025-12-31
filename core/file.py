@@ -138,6 +138,65 @@ def export_dataframe_to_formats(df, base_path, name, include_index=True):
     export_dataframe_to_json(df, base_path)
 
 
+def export_dataframe_to_datatable(df, base_path, name):
+    """
+    DataFrame을 DataTables 인터랙티브 HTML로 저장합니다.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        저장할 DataFrame
+    base_path : str
+        파일 경로 (확장자 제외)
+    name : str
+        테이블 제목
+    """
+    # 출력 디렉토리 확인
+    ensure_directory(Path(base_path).parent)
+
+    # 템플릿 로드
+    template_dir = get_config("template.base_dir")
+    template = get_template(template_dir, 'datatable.html')
+
+    # 데이터 행 변환
+    data_rows = []
+    for idx in df.index:
+        row_data = []
+        for col in df.columns:
+            value = df.loc[idx, col]
+            # 숫자 포맷팅
+            if isinstance(value, (int, float)):
+                if abs(value) < 1 and value != 0:
+                    formatted_value = f"{value:.6f}"
+                else:
+                    formatted_value = f"{value:.2f}"
+            else:
+                formatted_value = str(value)
+            row_data.append(formatted_value)
+
+        data_rows.append({
+            'index': str(idx),
+            'row_data': row_data
+        })
+
+    # HTML 렌더링 데이터
+    render_data = {
+        "title": name,
+        "date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "n_row": df.shape[0],
+        "n_col": df.shape[1],
+        "index_name": df.index.name or 'Index',
+        "columns": df.columns.tolist(),
+        "data": data_rows
+    }
+
+    html_content = template.render(render_data)
+    html_path = f"{base_path}_datatable.html"
+    with open(html_path, 'w', encoding='utf-8') as f:
+        f.write(html_content)
+    print(f"  ✓ {html_path}")
+
+
 def export_with_message(df, base_path, title):
     """
     메시지 출력과 함께 DataFrame을 export합니다.

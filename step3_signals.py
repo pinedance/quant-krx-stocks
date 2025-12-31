@@ -5,7 +5,7 @@ STEP 3: KRX300 Signals 생성 및 저장
 
 import pandas as pd
 import numpy as np
-from core.file import import_dataframe_from_json, export_with_message
+from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.finance import annualize_rt, stdev, dsdev, get_corrMatrix
 from core.models import LM
 from core.config import settings
@@ -78,6 +78,11 @@ def main():
     export_with_message(mmtM, f'{signal_dir}/momentum', 'Momentum Indicators')
     export_with_message(pfmM, f'{signal_dir}/performance', 'Performance Indicators')
     export_with_message(corM, f'{signal_dir}/correlation', 'Correlation Matrix')
+
+    # DataTables 인터랙티브 버전 추가
+    print("\n인터랙티브 테이블 생성 (DataTables)...")
+    export_dataframe_to_datatable(mmtM, f'{signal_dir}/momentum', 'Momentum Indicators - Interactive Table')
+    export_dataframe_to_datatable(pfmM, f'{signal_dir}/performance', 'Performance Indicators - Interactive Table')
 
     print_completion(3)
 
