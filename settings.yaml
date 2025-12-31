@@ -21,6 +21,10 @@ signals:
   correlation:
     periods: 12             # 상관관계 계산 기간 (개월)
 
+# 백테스트 설정
+backtest:
+  end_date: 2025-01-31  # 백테스트 종료일 (YYYY-MM-DD 형식, null이면 데이터 끝까지)
+
 # 시각화 설정
 visualization:
   scatter_plot:
@@ -80,6 +84,7 @@ output:
   price_dir: "output/price"
   signal_dir: "output/signal"
   portfolio_dir: "output/portfolios"
+  backtest_dir: "output/backtest"
   dashboard_dir: "output/dashboard"
 
   # HTML 설정
