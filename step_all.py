@@ -1,6 +1,6 @@
 """
 KRX300 프로젝트 전체 실행 스크립트
-STEP 1 → STEP 2 → STEP 3 → STEP 4 → STEP 5를 순차적으로 실행합니다.
+STEP 1 → STEP 2 → STEP 3 → STEP 4 → STEP 5 → STEP 6을 순차적으로 실행합니다.
 """
 
 import subprocess
@@ -9,7 +9,7 @@ import time
 import shutil
 from pathlib import Path
 from core.config import settings
-from core.io import print_directory_tree
+from core.utils import print_directory_tree
 
 
 def clean_output_directory():
@@ -73,8 +73,9 @@ def main():
         ("STEP 1: KRX300 종목 리스트 생성", "step1_list.py"),
         ("STEP 2: 가격 데이터 생성", "step2_price.py"),
         ("STEP 3: Signals 생성", "step3_signals.py"),
-        ("STEP 4: 대시보드 생성", "step4_dashboards.py"),
-        ("STEP 5: 인덱스 페이지 생성", "step5_index.py")
+        ("STEP 4: 종목 선택 및 포트폴리오 구성", "step4_selector.py"),
+        ("STEP 5: 대시보드 생성", "step5_dashboards.py"),
+        ("STEP 6: 인덱스 페이지 생성", "step6_index.py")
     ]
 
     total_start = time.time()

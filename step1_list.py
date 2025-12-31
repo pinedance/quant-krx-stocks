@@ -4,7 +4,8 @@ STEP 1: KRX300 종목 리스트 생성
 - HTML, TSV, JSON 형식으로 출력
 """
 
-from core.io import get_list, export_dataframe_to_formats
+from core.fetcher import get_list
+from core.file import export_dataframe_to_formats
 from core.config import settings
 
 def main():

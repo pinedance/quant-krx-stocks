@@ -2,7 +2,8 @@
 STEP 2: KRX300 데이터 생성 및 저장
 """
 
-from core.io import import_dataframe_from_json, get_price, export_dataframe_to_formats
+from core.fetcher import get_price
+from core.file import import_dataframe_from_json, export_dataframe_to_formats
 from core.utils import date_before
 from core.config import settings
 

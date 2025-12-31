@@ -48,8 +48,9 @@ uv run python step_all.py
 uv run python step1_list.py      # 종목 리스트 생성
 uv run python step2_price.py     # 가격 데이터 다운로드
 uv run python step3_signals.py   # 시그널 계산
-uv run python step4_dashboards.py # 대시보드 생성
-uv run python step5_index.py     # 인덱스 페이지 생성
+uv run python step4_selector.py  # 종목 선택 및 포트폴리오 구성
+uv run python step5_dashboards.py # 대시보드 생성
+uv run python step6_index.py     # 인덱스 페이지 생성
 
 # 결과 확인
 open output/index.html
@@ -67,12 +68,12 @@ output/
 │   ├── universe.tsv
 │   └── universe.json
 ├── price/
-│   ├── priceD.html              # 일별 가격 데이터
-│   ├── priceD.tsv
-│   ├── priceD.json
-│   ├── priceM.html              # 월별 가격 데이터
-│   ├── priceM.tsv
-│   └── priceM.json
+│   ├── closeD.html              # 일별 가격 데이터
+│   ├── closeD.tsv
+│   ├── closeD.json
+│   ├── closeM.html              # 월별 가격 데이터
+│   ├── closeM.tsv
+│   └── closeM.json
 ├── signal/
 │   ├── momentum.html            # 모멘텀 시그널
 │   ├── momentum.tsv
@@ -121,10 +122,10 @@ output/
 `step2_price.py`
 
 - FinanceDataReader를 이용한 가격 데이터 다운로드
-- 일별 데이터(priceD): 시가, 고가, 저가, 종가, 거래량 (63개월)
-- 월별 데이터(priceM): 일별 데이터를 월별로 리샘플링
+- 일별 데이터(closeD): 시가, 고가, 저가, 종가, 거래량 (63개월)
+- 월별 데이터(closeM): 일별 데이터를 월별로 리샘플링
 - 병렬 다운로드 지원 (설정 가능)
-- 출력: `output/price/priceD.*`, `output/price/priceM.*`
+- 출력: `output/price/closeD.*`, `output/price/closeM.*`
 
 ### STEP 3: 시그널 계산
 
@@ -145,9 +146,18 @@ output/
 - 12개월 가격 변화 기준 종목 간 상관계수 매트릭스
 - Marginal mean 추가 (각 종목의 평균 상관관계)
 
-### STEP 4: 대시보드 생성
+### STEP 4: 종목 선택 및 포트폴리오 구성
 
-`step4_dashboards.py`
+`step4_selector.py`
+
+- Momentum/Performance 지표 기반 복합 점수 계산
+- 선택 기준에 따른 종목 필터링 및 순위 매기기
+- 포트폴리오 가중치 계산 (equal weight, score weighted 등)
+- 출력: `output/signal/scores.*`, `output/signal/selected.*`, `output/signal/portfolio.*`
+
+### STEP 5: 대시보드 생성
+
+`step5_dashboards.py`
 
 - Plotly를 이용한 인터랙티브 차트 생성
 - 다중 기간 분석 (12/36/60개월)
@@ -156,9 +166,9 @@ output/
 - 계층적 클러스터링 (ward 방법, 25개 클러스터)
 - 출력: `output/dashboard/*`
 
-### STEP 5: 인덱스 페이지 생성
+### STEP 6: 인덱스 페이지 생성
 
-`step5_index.py`
+`step6_index.py`
 
 - 모든 대시보드와 데이터 파일로의 네비게이션 페이지 생성
 - output 디렉토리 스캔 후 자동 링크 생성
@@ -236,8 +246,9 @@ quant-krx300/
 ├── step1_list.py               # 종목 리스트
 ├── step2_price.py              # 가격 데이터
 ├── step3_signals.py            # 시그널 계산
-├── step4_dashboards.py         # 대시보드 생성
-├── step5_index.py              # 인덱스 페이지
+├── step4_selector.py           # 종목 선택 및 포트폴리오 구성
+├── step5_dashboards.py         # 대시보드 생성
+├── step6_index.py              # 인덱스 페이지
 ├── step_all.py                 # 전체 파이프라인
 ├── settings.yaml               # 설정 파일
 ├── pyproject.toml              # 프로젝트 의존성

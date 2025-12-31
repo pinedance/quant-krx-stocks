@@ -1,12 +1,12 @@
 """
-STEP 5: 결과물 인덱스 페이지 생성
+STEP 6: 결과물 인덱스 페이지 생성
 - output 디렉토리의 모든 결과물을 정리한 index.html 생성
 """
 
 from pathlib import Path
 from datetime import datetime
 from core.config import settings
-from core.io import render_html_from_template
+from core.renderer import render_html_from_template
 
 
 def scan_output_directory(base_dir):
@@ -40,12 +40,12 @@ def scan_output_directory(base_dir):
             'items': [
                 {
                     'name': 'Daily Price',
-                    'base': 'priceD',
+                    'base': 'closeD',
                     'description': '일별 종가 데이터 (전체 다운로드 종목)'
                 },
                 {
                     'name': 'Monthly Price',
-                    'base': 'priceM',
+                    'base': 'closeM',
                     'description': f'월별 종가 데이터 (상위 {settings.data.n_universe}개 종목)'
                 }
             ]
@@ -161,7 +161,7 @@ def scan_output_directory(base_dir):
 
 def main():
     print("=" * 70)
-    print("STEP 5: 결과물 인덱스 페이지 생성")
+    print("STEP 6: 결과물 인덱스 페이지 생성")
     print("=" * 70)
 
     # 설정 로드
@@ -193,7 +193,7 @@ def main():
     print(f"  ✓ {output_path}")
 
     print("\n" + "=" * 70)
-    print("STEP 5 완료!")
+    print("STEP 6 완료!")
     print(f"브라우저에서 {output_path} 파일을 열어보세요.")
     print("=" * 70)
 
