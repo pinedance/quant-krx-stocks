@@ -4,10 +4,10 @@ STEP 5: KRX300 대시보드 생성
 """
 
 import json
-from pathlib import Path
 from core.config import settings
 from core.file import import_dataframe_from_json
 from core.renderer import render_dashboard_html, render_html_from_template
+from core.utils import ensure_directory
 from core.visualization import (
     create_monthly_momentum_chart,
     create_regression_momentum_chart,
@@ -52,7 +52,7 @@ def create_momentum_dashboard(momentum, performance):
 
     # 출력 디렉토리 생성
     dashboard_dir = settings.output.dashboard_dir
-    Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
+    ensure_directory(dashboard_dir)
 
     # 차트 생성 (총 5개)
     chart_monthly = create_monthly_momentum_chart(momentum)
@@ -91,7 +91,7 @@ def create_performance_dashboard(momentum, performance):
 
     # 출력 디렉토리 생성
     dashboard_dir = settings.output.dashboard_dir
-    Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
+    ensure_directory(dashboard_dir)
 
     # 차트 생성 (총 4개)
     chart_sharpe = create_sharpe_ratio_chart(performance)
@@ -128,7 +128,7 @@ def create_correlation_network(correlation):
     # 설정 로드
     threshold = settings.visualization.correlation_network.threshold
     dashboard_dir = settings.output.dashboard_dir
-    Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
+    ensure_directory(dashboard_dir)
 
     # marginal_mean 제거하고 실제 종목들만
     corr_matrix = correlation.drop(MARGINAL_MEAN_COLUMN, axis=0).drop(MARGINAL_MEAN_COLUMN, axis=1)
@@ -191,7 +191,7 @@ def create_correlation_cluster(correlation):
     cluster_method = settings.visualization.dendrogram.method
     n_clusters = settings.visualization.dendrogram.n_cluster
     dashboard_dir = settings.output.dashboard_dir
-    Path(dashboard_dir).mkdir(parents=True, exist_ok=True)
+    ensure_directory(dashboard_dir)
 
     # marginal_mean 제거
     corr_matrix = correlation.drop(MARGINAL_MEAN_COLUMN, axis=0).drop(MARGINAL_MEAN_COLUMN, axis=1)

@@ -7,11 +7,10 @@ STEP 1: KRX300 종목 리스트 생성
 from core.fetcher import get_list
 from core.file import export_dataframe_to_formats
 from core.config import settings
+from core.utils import print_step_header, print_completion
 
 def main():
-    print("=" * 60)
-    print("STEP 1: 종목 리스트 생성")
-    print("=" * 60)
+    print_step_header(1, "종목 리스트 생성")
 
     # KRX300 종목 리스트 가져오기
     market = settings.data.market
@@ -38,9 +37,7 @@ def main():
         include_index=False
     )
 
-    print("\n" + "=" * 60)
-    print("STEP 1 완료!")
-    print("=" * 60)
+    print_completion(1)
 
 if __name__ == "__main__":
     main()

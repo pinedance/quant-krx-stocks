@@ -1,7 +1,7 @@
 """HTML 템플릿 렌더링 모듈"""
-from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 from core.config import get_config
+from core.utils import ensure_directory
 
 
 def get_template(base_dir, filename):
@@ -40,7 +40,8 @@ def render_html_from_template(template_name, render_data, output_path):
         출력 파일 경로
     """
     # 출력 디렉토리 확인
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    from pathlib import Path
+    ensure_directory(Path(output_path).parent)
 
     # 템플릿 로드
     template_dir = get_config("template.base_dir")
@@ -70,7 +71,8 @@ def render_dashboard_html(title, figures, chart_ids, output_path):
         출력 파일 경로
     """
     # 출력 디렉토리 확인
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    from pathlib import Path
+    ensure_directory(Path(output_path).parent)
 
     # 템플릿 로드
     template_dir = get_config("template.base_dir")

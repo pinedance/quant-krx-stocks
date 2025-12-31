@@ -1,10 +1,11 @@
 """DataFrame 입출력 모듈"""
 from datetime import datetime
-from pathlib import Path
 import pandas as pd
 import json
+from pathlib import Path
 from core.config import get_config
 from core.renderer import get_template
+from core.utils import ensure_directory
 
 
 def import_dataframe_from_json(json_path):
@@ -46,7 +47,7 @@ def export_dataframe_to_html(df, base_path, name):
         테이블 제목
     """
     # 출력 디렉토리 확인
-    Path(base_path).parent.mkdir(parents=True, exist_ok=True)
+    ensure_directory(Path(base_path).parent)
 
     # 템플릿 로드
     template_dir = get_config("template.base_dir")
@@ -82,7 +83,7 @@ def export_dataframe_to_tsv(df, base_path, include_index=True):
         index 포함 여부
     """
     # 출력 디렉토리 확인
-    Path(base_path).parent.mkdir(parents=True, exist_ok=True)
+    ensure_directory(Path(base_path).parent)
 
     tsv_path = f"{base_path}.tsv"
     df.to_csv(tsv_path, sep='\t', encoding='utf-8', index=include_index)
@@ -101,7 +102,7 @@ def export_dataframe_to_json(df, base_path):
         파일 경로 (확장자 제외)
     """
     # 출력 디렉토리 확인
-    Path(base_path).parent.mkdir(parents=True, exist_ok=True)
+    ensure_directory(Path(base_path).parent)
 
     json_path = f"{base_path}.json"
     data = {
