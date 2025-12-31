@@ -4,8 +4,10 @@
 data:
   market: 'KRX'
   n_universe: 300  # universe 종목 수
+  n_buffer: 100     # 데이터 미달 종목을 염두한 버퍼
   price:
     periods: 63  # 몇 개월치 데이터를 가져올지
+    min_periods: 12     # 최소 충족 데이터 수 (monthly). 충족되지 않는 종목은 drop
     # 데이터 소스 (KRX, NAVER, YAHOO, null=자동)
     download_source: null  # 예: "KRX", "NAVER", "YAHOO" 또는 null
     # 다운로드 방식 (worker 수는 CPU 코어 수로 자동 설정)

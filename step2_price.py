@@ -14,7 +14,7 @@ def main():
 
     # 설정 로드
     n_universe = settings.data.n_universe
-    n_try = n_universe + 100
+    n_try = n_universe + settings.data.n_buffer
     price_periods = settings.data.price.periods
     # input dir
     list_dir = settings.output.list_dir
@@ -37,12 +37,20 @@ def main():
 
     # 3. Daily/Monthly Price DataFrame
     print("\n[3/4] Monthly Price DataFrame 생성...")
-    closeM = closeD.resample('ME').last()  # 'M' → 'ME' (Month End)
-    closeM.dropna(axis=1, how='any', inplace=True)
-    # ticker 개수 조정 
-    new_columns = closeM.columns[:n_universe]
-    # 마지막 행 제거 (현재 가격 => 이전 달 종가)
-    closeM = closeM[new_columns].iloc[:-1]    
+    _closeM = closeD.resample('ME').last()  # 'M' → 'ME' (Month End)
+
+    # min_periods: 최소 개월 수 (전후 1개월씩 추가)
+    min_periods = 1 + settings.data.price.min_periods + 1
+
+    # 처음 min_periods 개월 동안 데이터가 완전한 종목만 선택 (최근 상장 종목 제외)
+    _closeM_filtered = _closeM.iloc[:min_periods].dropna(axis=1, how='any')
+
+    # ticker 개수를 n_universe로 조정
+    n_universe_updated = min(len(_closeM_filtered.columns), n_universe)
+    selected_tickers = _closeM_filtered.columns[:n_universe_updated]
+
+    # 선택된 종목의 전체 기간 데이터 (마지막 행 제거: 현재 가격 기준이 '이전 달 종가'이므로)
+    closeM = _closeM[selected_tickers].iloc[:-1]
 
     print(f"      Daily:  {closeD.shape}")
     print(f"      Monthly: {closeM.shape}")

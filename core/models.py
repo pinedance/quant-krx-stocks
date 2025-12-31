@@ -40,8 +40,8 @@ class LM:
             for col in data.columns:
                 y = data[col].iloc[-periods:].values
 
-                # 데이터 검증
-                if len(y) < periods or np.isnan(y).any():
+                # 데이터 검증 (선형 회귀는 최소 2개 포인트 필요)
+                if periods < 2 or len(y) < periods or not np.all(np.isfinite(y)):
                     slopes.append(np.nan)
                     intercepts.append(np.nan)
                     scores.append(np.nan)
@@ -77,7 +77,8 @@ class LM:
             # Series: 단일 회귀 분석
             y = data.iloc[-periods:].values
 
-            if len(y) < periods or np.isnan(y).any():
+            # 데이터 검증 (선형 회귀는 최소 2개 포인트 필요)
+            if periods < 2 or len(y) < periods or not np.all(np.isfinite(y)):
                 self.slope = np.nan
                 self.intercept = np.nan
                 self.score = np.nan

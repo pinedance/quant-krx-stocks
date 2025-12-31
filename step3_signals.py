@@ -42,9 +42,11 @@ def main():
     mmtM['13612MR'] = (mmtM['1MR'] + mmtM['3MR'] + mmtM['6MR'] + mmtM['12MR']) / 4
 
     # Momentum (with Linear Regression)
-    for period in mnt_periods:
+    # 1~12개월 + mnt_periods (중복 제거 및 정렬)
+    all_periods = sorted(set(list(range(1, 13)) + mnt_periods))
+    for period in all_periods:
         LR = LM().fit(closeM_log, period)
-        mmtM[f'AS{period}'] = ( np.exp(LR.slope * 12) - 1 )  # 연율화, Monthly
+        mmtM[f'AS{period}'] = (np.exp(LR.slope * 12) - 1)  # 연율화, Monthly
         mmtM[f'RS{period}'] = LR.score
 
     print(f"      완료: {mmtM.shape}")
