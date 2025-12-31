@@ -29,7 +29,7 @@ def main():
     # 3가지 형식으로 저장
     print("\n출력 파일 생성 중...")
 
-    list_dir = settings.output.list_dir
+    list_dir = settings.output.list_dir.path
     export_dataframe_to_formats(
         df,
         f'{list_dir}/{market}_list',

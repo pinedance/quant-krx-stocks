@@ -356,8 +356,8 @@ def main():
     print_step_header(0, "Strategy 1 백테스트")
 
     # 설정 로드
-    price_dir = settings.output.price_dir
-    backtest_base_dir = settings.output.backtest_dir
+    price_dir = settings.output.price_dir.path
+    backtest_base_dir = settings.output.backtest_dir.path
     strategy_name = "strategy1"
     output_dir = f"{backtest_base_dir}/{strategy_name}"
     end_date = settings.backtest.end_date if hasattr(settings, 'backtest') else None

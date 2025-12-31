@@ -80,12 +80,30 @@ visualization:
 # 출력 설정
 output:
   base_dir: "output"
-  list_dir: "output/list"
-  price_dir: "output/price"
-  signal_dir: "output/signal"
-  portfolio_dir: "output/portfolios"
-  backtest_dir: "output/backtest"
-  dashboard_dir: "output/dashboard"
+  list_dir:
+    path: "output/list"
+    title: "Stock List"
+    desc: "KRX 시장의 전체 종목 리스트 (시가총액 순)"
+  price_dir:
+    path: "output/price"
+    title: "Price Data"
+    desc: "종목별 가격 데이터 (일별/월별)"
+  signal_dir:
+    path: "output/signal"
+    title: "Signal Indicators"
+    desc: "모멘텀, 성과, 상관관계 지표"
+  portfolio_dir:
+    path: "output/portfolios"
+    title: "Portfolio Selection"
+    desc: "전략별 종목 선택 및 포트폴리오 구성"
+  backtest_dir:
+    path: "output/backtest"
+    title: "Backtest Results"
+    desc: "전략별 백테스트 성과 분석"
+  dashboard_dir:
+    path: "output/dashboard"
+    title: "Interactive Dashboards"
+    desc: "Plotly 인터랙티브 시각화 및 네트워크 분석"
 
   # HTML 설정
   html:
@@ -107,3 +125,4 @@ logging:
 # 프로젝트 설정
 project:
   name: "KRX Quantitative Analysis"
+  url: "https://pinedance.github.io/quant-krx-stocks/"

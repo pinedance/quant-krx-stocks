@@ -16,9 +16,9 @@ def main():
     n_try = n_universe + settings.data.n_buffer
     price_periods = settings.data.price.periods
     # input dir
-    list_dir = settings.output.list_dir
+    list_dir = settings.output.list_dir.path
     # output dir
-    price_dir = settings.output.price_dir
+    price_dir = settings.output.price_dir.path
 
     # 1. 종목 리스트
     print_progress(1, 4, "종목 리스트 가져오기...")

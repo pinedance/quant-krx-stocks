@@ -19,9 +19,9 @@ def main():
     mnt_periods = settings.signals.momentum.periods
     corr_periods = settings.signals.correlation.periods
     # input dir
-    price_dir = settings.output.price_dir
+    price_dir = settings.output.price_dir.path
     # output dir
-    signal_dir = settings.output.signal_dir
+    signal_dir = settings.output.signal_dir.path
 
     # 1. Monthly Price DataFrame 로드
     print_progress(1, 4, "Monthly Price 데이터 로드...")

@@ -9,8 +9,59 @@ from core.config import settings
 from core.renderer import render_html_from_template
 
 
+def scan_directory_files(dir_path, base_path):
+    """디렉토리의 파일들을 스캔하여 그룹화
+
+    Parameters:
+    -----------
+    dir_path : Path
+        스캔할 디렉토리
+    base_path : Path
+        base_dir (상대 경로 계산용)
+
+    Returns:
+    --------
+    list of dict
+        파일 아이템 리스트
+    """
+    if not dir_path.exists():
+        return []
+
+    # 파일들을 base_name으로 그룹화
+    file_groups = {}
+
+    for file_path in sorted(dir_path.rglob('*')):
+        if file_path.is_file():
+            # 상대 경로
+            rel_path = file_path.relative_to(base_path)
+            parent_name = file_path.parent.name if file_path.parent != dir_path else ''
+            file_name = file_path.stem
+            file_ext = file_path.suffix[1:]  # .html -> html
+
+            # 그룹 키 생성
+            if parent_name:
+                group_key = f"{parent_name}/{file_name}"
+            else:
+                group_key = file_name
+
+            if group_key not in file_groups:
+                file_groups[group_key] = {
+                    'name': group_key,
+                    'description': '',
+                    'files': []
+                }
+
+            file_groups[group_key]['files'].append({
+                'path': str(rel_path),
+                'label': file_ext.upper(),
+                'type': file_ext
+            })
+
+    return list(file_groups.values())
+
+
 def scan_output_directory(base_dir):
-    """output 디렉토리를 스캔하여 파일 목록 생성
+    """output 디렉토리를 settings.output 기반으로 동적 스캔
 
     Returns:
     --------
@@ -18,143 +69,41 @@ def scan_output_directory(base_dir):
         섹션 정보 (title, description, items)
     """
     base_path = Path(base_dir)
-
-    # 섹션 정의 (순서대로)
-    section_configs = [
-        {
-            'dir': 'list',
-            'title': '1. Stock List',
-            'description': 'KRX 시장의 전체 종목 리스트 (시가총액 순)',
-            'items': [
-                {
-                    'name': 'KRX_list',
-                    'base': 'KRX_list',
-                    'description': f'{settings.data.market} 전체 종목 정보'
-                }
-            ]
-        },
-        {
-            'dir': 'price',
-            'title': '2. Price Data',
-            'description': '종목별 가격 데이터 (일별/월별)',
-            'items': [
-                {
-                    'name': 'Daily Price',
-                    'base': 'closeD',
-                    'description': '일별 종가 데이터 (전체 다운로드 종목)'
-                },
-                {
-                    'name': 'Monthly Price',
-                    'base': 'closeM',
-                    'description': f'월별 종가 데이터 (상위 {settings.data.n_universe}개 종목)'
-                }
-            ]
-        },
-        {
-            'dir': 'signal',
-            'title': '3. Signal Indicators',
-            'description': '모멘텀, 성과, 상관관계 지표',
-            'items': [
-                {
-                    'name': 'Momentum',
-                    'base': 'momentum',
-                    'description': '월별 수익률, 평균 모멘텀, 회귀 모멘텀 지표'
-                },
-                {
-                    'name': 'Performance',
-                    'base': 'performance',
-                    'description': 'Sharpe Ratio, Sortino Ratio 성과 지표'
-                },
-                {
-                    'name': 'Correlation',
-                    'base': 'correlation',
-                    'description': '종목 간 상관계수 행렬 및 marginal mean'
-                }
-            ]
-        },
-        {
-            'dir': 'dashboard',
-            'title': '4. Interactive Dashboards',
-            'description': 'Plotly 인터랙티브 시각화 및 네트워크 분석',
-            'items': [
-                {
-                    'name': 'Momentum Dashboard',
-                    'files': ['momentum.html'],
-                    'description': 'Monthly Momentum, Regression Momentum 산점도'
-                },
-                {
-                    'name': 'Performance Dashboard',
-                    'files': ['performance.html'],
-                    'description': 'Sharpe Ratio, Sortino Ratio 산점도'
-                },
-                {
-                    'name': 'Correlation Network',
-                    'files': ['correlation_network.html', 'correlation_network.json'],
-                    'description': 'VOSviewer 네트워크 분석 (JSON 파일 포함)'
-                },
-                {
-                    'name': 'Correlation Cluster',
-                    'files': ['correlation_cluster.html', 'correlation_cluster.json'],
-                    'description': 'Hierarchical Clustering 덴드로그램 및 클러스터 정보 (JSON 파일 포함)'
-                }
-            ]
-        }
-    ]
-
     sections = []
     total_files = 0
     total_items = 0
 
-    for config in section_configs:
-        section_dir = base_path / config['dir']
-
-        if not section_dir.exists():
+    # settings.output에서 *_dir 필드들을 순서대로 읽음
+    section_number = 1
+    for key, value in settings.output.items():
+        # base_dir, html 등은 스킵
+        if key == 'base_dir' or key == 'html' or not key.endswith('_dir'):
             continue
 
-        section = {
-            'title': config['title'],
-            'description': config.get('description', ''),
-            'data_items': []
-        }
+        # dict 형식인 경우만 처리
+        if not isinstance(value, dict) or 'path' not in value:
+            continue
 
-        for item_config in config['items']:
-            item = {
-                'name': item_config['name'],
-                'description': item_config.get('description', ''),
-                'files': []
-            }
+        dir_path = Path(value['path'])
+        title = value.get('title', key.replace('_dir', '').title())
+        desc = value.get('desc', '')
 
-            # Dashboard는 files 리스트를 직접 지정
-            if 'files' in item_config:
-                for filename in item_config['files']:
-                    file_path = section_dir / filename
-                    if file_path.exists():
-                        ext = filename.split('.')[-1]
-                        item['files'].append({
-                            'path': f"{config['dir']}/{filename}",
-                            'label': ext.upper(),
-                            'type': ext
-                        })
-                        total_files += 1
-            # 기타는 base 이름으로 html, tsv, json 찾기
-            else:
-                base_name = item_config['base']
-                for ext in ['html', 'tsv', 'json']:
-                    file_path = section_dir / f"{base_name}.{ext}"
-                    if file_path.exists():
-                        item['files'].append({
-                            'path': f"{config['dir']}/{base_name}.{ext}",
-                            'label': ext.upper(),
-                            'type': ext
-                        })
-                        total_files += 1
+        # 해당 디렉토리가 존재하지 않으면 스킵
+        if not dir_path.exists():
+            continue
 
-            if item['files']:
-                section['data_items'].append(item)
-                total_items += 1
+        # 파일 스캔
+        data_items = scan_directory_files(dir_path, base_path)
 
-        if section['data_items']:
-            sections.append(section)
+        if data_items:
+            sections.append({
+                'title': f"{section_number}. {title}",
+                'description': desc,
+                'data_items': data_items
+            })
+            section_number += 1
+            total_items += len(data_items)
+            total_files += sum(len(item['files']) for item in data_items)
 
     return sections, total_files, total_items
 

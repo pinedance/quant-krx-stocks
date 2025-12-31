@@ -51,7 +51,7 @@ def create_momentum_dashboard(momentum, performance):
     print("\n[1/4] Momentum Dashboard 생성 중...")
 
     # 출력 디렉토리 생성
-    dashboard_dir = settings.output.dashboard_dir
+    dashboard_dir = settings.output.dashboard_dir.path
     ensure_directory(dashboard_dir)
 
     # 차트 생성 (총 5개)
@@ -90,7 +90,7 @@ def create_performance_dashboard(momentum, performance):
     print("\n[2/4] Performance Dashboard 생성 중...")
 
     # 출력 디렉토리 생성
-    dashboard_dir = settings.output.dashboard_dir
+    dashboard_dir = settings.output.dashboard_dir.path
     ensure_directory(dashboard_dir)
 
     # 차트 생성 (총 4개)
@@ -127,7 +127,7 @@ def create_correlation_network(correlation):
 
     # 설정 로드
     threshold = settings.visualization.correlation_network.threshold
-    dashboard_dir = settings.output.dashboard_dir
+    dashboard_dir = settings.output.dashboard_dir.path
     ensure_directory(dashboard_dir)
 
     # marginal_mean 제거하고 실제 종목들만
@@ -190,7 +190,7 @@ def create_correlation_cluster(correlation):
     # 설정 로드
     cluster_method = settings.visualization.dendrogram.method
     n_clusters = settings.visualization.dendrogram.n_cluster
-    dashboard_dir = settings.output.dashboard_dir
+    dashboard_dir = settings.output.dashboard_dir.path
     ensure_directory(dashboard_dir)
 
     # marginal_mean 제거
@@ -266,7 +266,7 @@ def main():
 
     # 데이터 로드
     print("\n데이터 로딩 중...")
-    signal_dir = settings.output.signal_dir
+    signal_dir = settings.output.signal_dir.path
 
     momentum = import_dataframe_from_json(f'{signal_dir}/momentum.json')
     performance = import_dataframe_from_json(f'{signal_dir}/performance.json')

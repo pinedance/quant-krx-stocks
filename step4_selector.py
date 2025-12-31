@@ -193,9 +193,9 @@ def main():
 
     # 설정 로드
     market = settings.data.market
-    list_dir = settings.output.list_dir
-    signal_dir = settings.output.signal_dir
-    portfolio_base_dir = settings.output.portfolio_dir
+    list_dir = settings.output.list_dir.path
+    signal_dir = settings.output.signal_dir.path
+    portfolio_base_dir = settings.output.portfolio_dir.path
     strategy_name = "strategy1"  # 전략 1
     output_dir = f"{portfolio_base_dir}/{strategy_name}"
 

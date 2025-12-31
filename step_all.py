@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 from core.config import settings
 from core.utils import print_directory_tree
+from core.message import send_telegram_message
 
 
 def clean_output_directory():
@@ -80,24 +81,55 @@ def main():
 
     total_start = time.time()
     success_count = 0
+    failed = False
 
     for step_name, script_name in steps:
         if run_step(step_name, script_name):
             success_count += 1
         else:
             print(f"\n{step_name}에서 오류가 발생하여 중단합니다.")
-            sys.exit(1)
+            failed = True
+            break
 
     total_elapsed = time.time() - total_start
 
     print("\n" + "=" * 70)
-    print(f"  전체 프로세스 완료!")
+    if failed:
+        print(f"  프로세스 중단!")
+    else:
+        print(f"  전체 프로세스 완료!")
     print("=" * 70)
     print(f"\n완료된 단계: {success_count}/{len(steps)}")
     print(f"총 소요 시간: {total_elapsed:.1f}초 ({total_elapsed/60:.1f}분)")
 
     # 생성된 결과물 디렉토리 트리 출력
-    print_output_results()
+    if not failed:
+        print_output_results()
+
+    # Telegram 메시지 전송
+    project_name = settings.project.name
+    project_url = settings.project.url if hasattr(settings.project, 'url') else None
+
+    if failed:
+        status_emoji = "❌"
+        status_text = "중단"
+    else:
+        status_emoji = "✅"
+        status_text = "완료"
+
+    message = f"{status_emoji} {project_name}\n\n"
+    message += f"{status_emoji} {status_text} | ⏱ {total_elapsed:.1f}초 ({total_elapsed/60:.1f}분) | 📊 {success_count}/{len(steps)} 성공"
+
+    if project_url:
+        message += f"\n\n🔗 {project_url}"
+
+    try:
+        send_telegram_message(message)
+    except Exception as e:
+        print(f"\n경고: Telegram 메시지 전송 실패: {e}")
+
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

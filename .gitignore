@@ -1,5 +1,6 @@
 # Custom
 .DEV
+.env
 test.py
 output/
 
