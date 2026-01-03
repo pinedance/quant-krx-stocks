@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.io as pio
-from core.finance import get_corrMatrix
+from core.finance import get_corr_matrix
 from core.models import LM
 from core.config import settings
 
@@ -71,7 +71,7 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
     # Correlation 계산 (최근 12개월)
     corr_periods = settings.signals.correlation.periods
     if len(prices) >= corr_periods:
-        correlation = get_corrMatrix(prices, corr_periods)
+        correlation = get_corr_matrix(prices, corr_periods)
     else:
         # 데이터 부족 시 빈 상관관계 행렬
         correlation = pd.DataFrame(index=prices.columns, columns=prices.columns)

@@ -131,7 +131,7 @@ def dsdev(prices, periods):
         raise ValueError("prices must be DataFrame or Series")
 
 
-def get_corrMatrix(prices, periods):
+def get_corr_matrix(prices, periods):
     """
     상관계수 행렬 계산
 

@@ -6,7 +6,7 @@ STEP 3: KRX300 Signals 생성 및 저장
 import pandas as pd
 import numpy as np
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
-from core.finance import annualize_rt, stdev, dsdev, get_corrMatrix
+from core.finance import annualize_rt, stdev, dsdev, get_corr_matrix
 from core.models import LM
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
@@ -69,15 +69,15 @@ def main():
 
     # 4. Correlation Matrix 계산
     print_progress(4, 4, f"Correlation Matrix 계산 (최근 {corr_periods}개월)...")
-    corM = get_corrMatrix(closeM, corr_periods)
-    print(f"      완료: {corM.shape}")
+    corrM = get_corr_matrix(closeM, corr_periods)
+    print(f"      완료: {corrM.shape}")
 
     # 5. 저장
     print("\n파일 저장 (HTML, TSV, JSON)...")
 
     export_with_message(mmtM, f'{signal_dir}/momentum', 'Momentum Indicators')
     export_with_message(pfmM, f'{signal_dir}/performance', 'Performance Indicators')
-    export_with_message(corM, f'{signal_dir}/correlation', 'Correlation Matrix')
+    export_with_message(corrM, f'{signal_dir}/correlation', 'Correlation Matrix')
 
     # DataTables 인터랙티브 버전 추가
     print("\n인터랙티브 테이블 생성 (DataTables)...")

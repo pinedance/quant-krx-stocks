@@ -5,76 +5,214 @@ STEP 4: 종목 선택 및 포트폴리오 구성
 """
 
 import pandas as pd
-import numpy as np
+from dataclasses import dataclass
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
+from core.backtest import calculate_avg_momentum, calculate_avg_rsquared, calculate_marginal_means
 
 
-def calculate_average_momentum(momentum):
+# ============================================================
+# Selection Configuration Pattern
+# ============================================================
+
+@dataclass
+class SelectionConfig:
     """
-    평균 모멘텀 계산 (13612MR)
+    종목 선택 전략 설정
+
+    Attributes:
+    -----------
+    name : str
+        전략 이름 (예: 'strategy1')
+    momentum_ratio : float
+        모멘텀 상위 비율 (0.5 = 상위 1/2)
+    rsquared_ratio : float
+        R-squared 상위 비율
+    correlation_ratio : float
+        Correlation 하위 비율 (낮을수록 분산 효과)
+    description : str
+        전략 설명
+    """
+    name: str
+    momentum_ratio: float
+    rsquared_ratio: float
+    correlation_ratio: float
+    description: str = ""
+
+
+# 전략 설정 정의
+SELECTION_STRATEGIES = [
+    SelectionConfig(
+        name="strategy1",
+        momentum_ratio=0.5,
+        rsquared_ratio=0.5,
+        correlation_ratio=0.33,
+        description="Base - 모멘텀 1/2 | R² 1/2 | 상관관계 1/3"
+    ),
+    # 추가 전략 정의 예시:
+    # SelectionConfig(
+    #     name="strategy2",
+    #     momentum_ratio=0.5,
+    #     rsquared_ratio=0.33,
+    #     correlation_ratio=0.25,
+    #     description="Quality Focus - R² 강화"
+    # ),
+]
+
+
+# ============================================================
+# 공통 로직
+# ============================================================
+
+def apply_selection_filters(
+    momentum: pd.DataFrame,
+    correlation: pd.DataFrame,
+    momentum_ratio: float,
+    rsquared_ratio: float,
+    correlation_ratio: float
+) -> tuple:
+    """
+    3단계 필터링을 수행하여 종목 선택
 
     Parameters:
     -----------
     momentum : pd.DataFrame
-        Momentum 데이터
+        모멘텀 데이터
+    correlation : pd.DataFrame
+        상관관계 행렬
+    momentum_ratio : float
+        모멘텀 상위 비율
+    rsquared_ratio : float
+        R-squared 상위 비율
+    correlation_ratio : float
+        Correlation 하위 비율
 
     Returns:
     --------
-    pd.Series
-        평균 모멘텀
+    tuple
+        (selected_tickers, avg_momentum, avg_rsquared, marginal_means)
     """
-    return momentum['13612MR']
+    total_stocks = len(momentum)
+
+    # Step 1: 평균 모멘텀 필터링
+    avg_momentum = calculate_avg_momentum(momentum)
+    step1_count = int(total_stocks * momentum_ratio)
+    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
+    print(f"      Step 1: 평균 모멘텀 상위 {momentum_ratio:.0%} → {len(step1_tickers)}개 종목")
+
+    # Step 2: 평균 R-squared 필터링
+    avg_rsquared = calculate_avg_rsquared(momentum)
+    step2_candidates = avg_rsquared[step1_tickers]
+    step2_count = int(len(step1_tickers) * rsquared_ratio)
+    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
+    print(f"      Step 2: 평균 R-squared 상위 {rsquared_ratio:.0%} → {len(step2_tickers)}개 종목")
+
+    # Step 3: Marginal mean 필터링
+    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
+    marginal_means = calculate_marginal_means(corr_matrix, step2_tickers)
+    step3_count = int(len(step2_tickers) * correlation_ratio)
+    step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
+    print(f"      Step 3: Marginal mean 하위 {correlation_ratio:.0%} → {len(step3_tickers)}개 종목")
+
+    print(f"      최종: {len(step3_tickers)}개 종목 (전체 {total_stocks}개의 {len(step3_tickers)/total_stocks:.1%})")
+
+    return step3_tickers, avg_momentum, avg_rsquared, marginal_means
 
 
-def calculate_average_rsquared(momentum):
+def build_selected_dataframe(
+    tickers: list,
+    tickers_info: pd.DataFrame,
+    avg_momentum: pd.Series,
+    avg_rsquared: pd.Series,
+    marginal_means: pd.Series
+) -> pd.DataFrame:
     """
-    평균 R-squared 계산: (1 + √RS3 + √RS6 + √RS12) / 4
+    선택된 종목 정보를 DataFrame으로 구성
 
     Parameters:
     -----------
-    momentum : pd.DataFrame
-        Momentum 데이터
-
-    Returns:
-    --------
-    pd.Series
-        평균 R-squared
-    """
-    return (1 + np.sqrt(momentum['RS3']) + np.sqrt(momentum['RS6']) +
-            np.sqrt(momentum['RS12'])) / 4
-
-
-def calculate_marginal_mean(correlation_matrix, tickers):
-    """
-    선택된 종목들 간의 marginal mean 계산
-
-    Parameters:
-    -----------
-    correlation_matrix : pd.DataFrame
-        전체 상관관계 행렬
     tickers : list
         선택된 종목 리스트
+    tickers_info : pd.DataFrame
+        전체 종목 정보
+    avg_momentum : pd.Series
+        평균 모멘텀
+    avg_rsquared : pd.Series
+        평균 R-squared
+    marginal_means : pd.Series
+        Marginal means
 
     Returns:
     --------
-    pd.Series
-        각 종목의 marginal mean (자기 자신 제외한 평균 상관계수)
+    pd.DataFrame
+        선택된 종목 정보
     """
-    # 선택된 종목들만 추출
-    sub_corr = correlation_matrix.loc[tickers, tickers]
+    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
 
-    # 각 종목의 marginal mean 계산 (자기 자신 제외)
-    n = len(tickers)
-    marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
+    selected_data = []
+    for ticker in tickers:
+        selected_data.append({
+            'Ticker': f'S{ticker}',
+            'Name': ticker_to_name.get(ticker, ''),
+            'avg_momentum': avg_momentum[ticker],
+            'avg_rsquared': avg_rsquared[ticker],
+            'marginal_mean': marginal_means[ticker]
+        })
 
-    return marginal_means
+    selected = pd.DataFrame(selected_data)
+    selected = selected.set_index('Ticker')
+
+    return selected
+
+
+def create_selection_strategy(config: SelectionConfig):
+    """
+    전략 설정에 따라 종목 선택 함수를 생성하는 Factory 함수
+
+    Parameters:
+    -----------
+    config : SelectionConfig
+        전략 설정
+
+    Returns:
+    --------
+    function
+        종목 선택 함수
+    """
+    def selector(momentum: pd.DataFrame, correlation: pd.DataFrame, tickers_info: pd.DataFrame) -> pd.DataFrame:
+        """전략 설정에 따른 종목 선택"""
+        # 필터링
+        tickers, avg_mmt, avg_rs, marg_means = apply_selection_filters(
+            momentum,
+            correlation,
+            config.momentum_ratio,
+            config.rsquared_ratio,
+            config.correlation_ratio
+        )
+
+        # DataFrame 구성
+        selected = build_selected_dataframe(
+            tickers,
+            tickers_info,
+            avg_mmt,
+            avg_rs,
+            marg_means
+        )
+
+        return selected
+
+    return selector
+
+
+# ============================================================
+# 기존 함수 (하위 호환성 유지)
+# ============================================================
 
 
 def select_stocks_strategy1(momentum, correlation, tickers_info):
     """
-    전략 1에 따른 종목 선택
+    전략 1에 따른 종목 선택 (레거시 함수 - 하위 호환성 유지)
 
     전략:
     1. 평균 모멘텀(13612MR) 상위 1/2
@@ -96,49 +234,10 @@ def select_stocks_strategy1(momentum, correlation, tickers_info):
     pd.DataFrame
         선택된 종목 정보 (Ticker, Name, 평균 모멘텀, 평균 R-squared, marginal mean 포함)
     """
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/2
-    avg_momentum = calculate_average_momentum(momentum)
-    step1_count = total_stocks // 2
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-    print(f"      Step 1: 평균 모멘텀 상위 1/2 → {len(step1_tickers)}개 종목")
-
-    # Step 2: 평균 R-squared 상위 1/2
-    avg_rsquared = calculate_average_rsquared(momentum)
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = len(step1_tickers) // 2
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-    print(f"      Step 2: 평균 R-squared 상위 1/2 → {len(step2_tickers)}개 종목")
-
-    # Step 3: Marginal mean 하위 1/3 (상관관계가 낮은 종목)
-    # correlation에서 'mean' 컬럼/행 제거 (step3에서 추가된 것)
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    marginal_means = calculate_marginal_mean(corr_matrix, step2_tickers)
-    step3_count = len(step2_tickers) // 3
-    step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    print(f"      Step 3: Marginal mean 하위 1/3 → {len(step3_tickers)}개 종목")
-
-    # 종목명 매핑
-    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
-
-    # 최종 선택 종목 정보
-    selected_data = []
-    for ticker in step3_tickers:
-        selected_data.append({
-            'Ticker': f'S{ticker}',
-            'Name': ticker_to_name.get(ticker, ''),
-            'avg_momentum': avg_momentum[ticker],
-            'avg_rsquared': avg_rsquared[ticker],
-            'marginal_mean': marginal_means[ticker]
-        })
-
-    selected = pd.DataFrame(selected_data)
-    selected = selected.set_index('Ticker')
-
-    print(f"      최종: {len(selected)}개 종목 (전체 {total_stocks}개의 {len(selected)/total_stocks:.1%})")
-
-    return selected
+    # Strategy Config 사용
+    config = SELECTION_STRATEGIES[0]  # strategy1
+    selector = create_selection_strategy(config)
+    return selector(momentum, correlation, tickers_info)
 
 
 def construct_portfolio(selected_stocks):
