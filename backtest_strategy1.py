@@ -1,7 +1,18 @@
 """
 BACKTEST: Strategy 1 백테스트
-- 월별 리밸런싱
-- KRX300 벤치마크와 비교
+- 시총 상위 300개 종목(조건: 1년 데이터 존재) | 13612MR 상위 1/2 종목 | mean-R2 상위 1/2종목 | correlation marginal mean 하위 1/3 종목
+    - 13612MR: ( 1M Return + 3M Return + 6M Return + 12M Return) / 4
+    - mean-R2: ( 1 + sqrt(RS3) + sqrt(RS6) + sqrt(RS12) ) / 4
+- 위 종목에 1/N 비중으로 투자. 단, 13612MR이 0보다 작은 종목에는 해당 비중만큼 현금 보유
+- 매월 1일 리밸런싱 (현재가: 지난달 종가)
+- 벤치마크 ETF Ticker: 069500 (KOSPI200)
+"""
+
+"""
+BACKTEST: Strategy 2 백테스트
+- Strategy 1 로직 변형 (다른 조건 동일)
+- 13612MR이 0보다 작은 종목에는 해당 비중의 1/4 인버스 보유, 3/4 현금 보유
+    - 인버스 ETF Ticker: 114800 
 """
 
 import pandas as pd
