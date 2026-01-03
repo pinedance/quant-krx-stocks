@@ -6,7 +6,9 @@ data:
   n_universe: 300  # universe 종목 수
   n_buffer: 100     # 데이터 미달 종목을 염두한 버퍼
   price:
-    periods: 63  # 몇 개월치 데이터를 가져올지
+    periods: 63      # 5년 + 버퍼 3개월    # 몇 개월치 데이터를 가져올지
+    # periods: 123   # 10년 + 버퍼 3개월   # 몇 개월치 데이터를 가져올지
+    # periods: 243   # 20년 + 버퍼 3개월   # 몇 개월치 데이터를 가져올지
     min_periods: 12     # 최소 충족 데이터 수 (monthly). 충족되지 않는 종목은 drop
     # 데이터 소스 (KRX, NAVER, YAHOO, null=자동)
     download_source: null  # 예: "KRX", "NAVER", "YAHOO" 또는 null
@@ -97,7 +99,7 @@ output:
     title: "Portfolio Selection"
     desc: "전략별 종목 선택 및 포트폴리오 구성"
   backtest_dir:
-    path: "output/backtest"
+    path: "output/backtests"
     title: "Backtest Results"
     desc: "전략별 백테스트 성과 분석"
   dashboard_dir:
