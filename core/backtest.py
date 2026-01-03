@@ -8,6 +8,7 @@ import numpy as np
 import FinanceDataReader as fdr
 from typing import Callable, Optional, Dict, Tuple, List
 from datetime import datetime
+from dataclasses import dataclass
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import plotly.io as pio
@@ -763,3 +764,267 @@ def generate_html_report(
     render_html_from_template('backtest_report.html', render_data, output_path)
 
     print(f"      HTML 리포트 생성 완료: {output_path}")
+
+
+# ============================================================
+# Strategy Configuration 패턴
+# ============================================================
+
+@dataclass
+class StrategyConfig:
+    """
+    백테스트 전략 설정
+
+    Attributes:
+    -----------
+    name : str
+        전략 이름 (예: 'strategy1')
+    momentum_ratio : float
+        모멘텀 상위 비율 (0.33 = 상위 1/3, 0.5 = 상위 1/2)
+    rsquared_ratio : float
+        R-squared 상위 비율
+    correlation_ratio : float
+        Correlation 하위 비율 (낮을수록 분산 효과 강화)
+    use_inverse : bool
+        음수 모멘텀 종목에 인버스 ETF 사용 여부
+    use_macd_filter : bool
+        MACD 오실레이터 필터 사용 여부 (3MR - 12MR)
+    description : str
+        전략 설명
+    """
+    name: str
+    momentum_ratio: float
+    rsquared_ratio: float
+    correlation_ratio: float
+    use_inverse: bool = False
+    use_macd_filter: bool = False
+    description: str = ""
+
+
+def create_strategy_selector(config: StrategyConfig) -> Callable:
+    """
+    전략 설정에 따라 포트폴리오 선택 함수를 생성하는 Factory 함수
+
+    Parameters:
+    -----------
+    config : StrategyConfig
+        전략 설정
+
+    Returns:
+    --------
+    Callable
+        (momentum, correlation) -> portfolio 형태의 선택 함수
+    """
+    def selector(momentum: pd.DataFrame, correlation: pd.DataFrame) -> Dict[str, float]:
+        """전략 설정에 따른 포트폴리오 선택"""
+        # 필터링
+        tickers = apply_filters(
+            momentum,
+            correlation,
+            config.momentum_ratio,
+            config.rsquared_ratio,
+            config.correlation_ratio
+        )
+
+        # 포트폴리오 구성
+        portfolio = build_portfolio(
+            tickers,
+            momentum,
+            use_inverse=config.use_inverse,
+            use_macd_filter=config.use_macd_filter
+        )
+
+        return portfolio
+
+    return selector
+
+
+# ============================================================
+# 전략 공통 로직
+# ============================================================
+
+def calculate_avg_momentum(momentum: pd.DataFrame) -> pd.Series:
+    """
+    13612MR 계산
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        모멘텀 데이터프레임
+
+    Returns:
+    --------
+    pd.Series
+        13612MR (1MR + 3MR + 6MR + 12MR) / 4
+    """
+    return momentum['13612MR']
+
+
+def calculate_avg_rsquared(momentum: pd.DataFrame) -> pd.Series:
+    """
+    mean-R² 계산: (1 + √RS3 + √RS6 + √RS12) / 4
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        모멘텀 데이터프레임 (RS3, RS6, RS12 컬럼 필요)
+
+    Returns:
+    --------
+    pd.Series
+        평균 R-squared 값
+    """
+    return (1 + np.sqrt(momentum['RS3']) +
+            np.sqrt(momentum['RS6']) +
+            np.sqrt(momentum['RS12'])) / 4
+
+
+def calculate_marginal_means(correlation: pd.DataFrame, tickers: List[str]) -> pd.Series:
+    """
+    Correlation marginal mean 계산
+
+    Parameters:
+    -----------
+    correlation : pd.DataFrame
+        상관계수 행렬
+    tickers : List[str]
+        대상 종목 리스트
+
+    Returns:
+    --------
+    pd.Series
+        각 종목의 marginal mean (다른 종목들과의 평균 상관계수)
+    """
+    # 'mean' 행/열 제거
+    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
+
+    # 해당 종목들만 필터링
+    available_tickers = [t for t in tickers if t in corr_matrix.index]
+
+    if len(available_tickers) == 0:
+        return pd.Series(dtype=float)
+
+    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
+    n = len(available_tickers)
+
+    if n > 1:
+        # 대각선 제외한 평균
+        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
+        return marginal_means
+    else:
+        # 종목이 1개면 marginal mean 없음
+        return pd.Series([0.0], index=available_tickers)
+
+
+def apply_filters(
+    momentum: pd.DataFrame,
+    correlation: pd.DataFrame,
+    momentum_ratio: float,
+    rsquared_ratio: float,
+    correlation_ratio: float
+) -> List[str]:
+    """
+    3단계 필터링 수행
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        모멘텀 데이터
+    correlation : pd.DataFrame
+        상관계수 행렬
+    momentum_ratio : float
+        모멘텀 상위 비율 (예: 0.5 = 상위 50%)
+    rsquared_ratio : float
+        R-squared 상위 비율
+    correlation_ratio : float
+        Correlation 하위 비율
+
+    Returns:
+    --------
+    List[str]
+        필터링된 종목 리스트
+    """
+    # NaN 제거
+    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
+    if len(momentum) == 0:
+        return []
+
+    total_stocks = len(momentum)
+
+    # Step 1: 평균 모멘텀 필터링
+    avg_momentum = calculate_avg_momentum(momentum)
+    step1_count = max(1, int(total_stocks * momentum_ratio))
+    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
+
+    # Step 2: 평균 R-squared 필터링
+    avg_rsquared = calculate_avg_rsquared(momentum)
+    step2_candidates = avg_rsquared[step1_tickers]
+    step2_count = max(1, int(len(step1_tickers) * rsquared_ratio))
+    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
+
+    # Step 3: Marginal mean 필터링
+    marginal_means = calculate_marginal_means(correlation, step2_tickers)
+    if len(marginal_means) == 0:
+        return []
+
+    step3_count = max(1, int(len(marginal_means) * correlation_ratio))
+    step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
+
+    return step3_tickers
+
+
+def build_portfolio(
+    tickers: List[str],
+    momentum: pd.DataFrame,
+    use_inverse: bool = False,
+    use_macd_filter: bool = False
+) -> Dict[str, float]:
+    """
+    포트폴리오 구성
+
+    Parameters:
+    -----------
+    tickers : List[str]
+        선택된 종목 리스트
+    momentum : pd.DataFrame
+        모멘텀 데이터
+    use_inverse : bool
+        음수 모멘텀 종목에 인버스 ETF 사용 여부
+    use_macd_filter : bool
+        MACD 필터 사용 여부
+
+    Returns:
+    --------
+    Dict[str, float]
+        포트폴리오 (ticker: weight)
+    """
+    if len(tickers) == 0:
+        return {}
+
+    n_stocks = len(tickers)
+    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
+
+    portfolio = {}
+    inverse_weight = 0.0
+
+    for ticker in tickers:
+        avg_mom = momentum.loc[ticker, '13612MR']
+
+        # MACD 필터 체크
+        if use_macd_filter:
+            macd_osc = momentum.loc[ticker, '3MR'] - momentum.loc[ticker, '12MR']
+            if avg_mom < 0 or macd_osc < 0:
+                continue  # 현금 보유
+
+        # 기본 필터 (13612MR >= 0)
+        if avg_mom >= 0:
+            portfolio[ticker] = equal_weight
+        elif use_inverse:
+            # 음수 모멘텀 시 인버스 비중 누적
+            inverse_weight += equal_weight / 4
+
+    # 인버스 가중치 추가
+    if inverse_weight > 0 and use_inverse:
+        portfolio['INVERSE'] = inverse_weight
+
+    return portfolio

@@ -62,383 +62,68 @@ import numpy as np
 from core.file import import_dataframe_from_json
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion, ensure_directory
-from core.backtest import BacktestRunner
+from core.backtest import BacktestRunner, StrategyConfig, create_strategy_selector
 
 SUBDIR = "backtest01"  # 현재 자기 자신 python file name
 
 
 # ============================================================
-# Strategy 포트폴리오 선택 함수
+# 전략 설정 (Strategy Configuration Pattern)
 # ============================================================
 
-def select_portfolio_strategy1(momentum, correlation):
-    """
-    Strategy 1: 13612MR 상위 1/2 | mean-R2 상위 1/2 | correlation marginal mean 하위 1/3
-    """
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return {}
-
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/2
-    avg_momentum = momentum['13612MR']
-    step1_count = max(1, total_stocks // 2)
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-
-    # Step 2: 평균 R-squared 상위 1/2
-    avg_rsquared = (1 + np.sqrt(momentum['RS3']) +
-                    np.sqrt(momentum['RS6']) +
-                    np.sqrt(momentum['RS12'])) / 4
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, len(step1_tickers) // 2)
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-
-    # Step 3: Marginal mean 하위 1/3
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    available_tickers = [t for t in step2_tickers if t in corr_matrix.index]
-    if len(available_tickers) == 0:
-        return {}
-
-    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
-    n = len(available_tickers)
-
-    if n > 1:
-        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
-        step3_count = max(1, n // 3)
-        step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    else:
-        step3_tickers = available_tickers
-
-    # 포트폴리오 구성 (동일 비중, 음수 모멘텀은 현금)
-    n_stocks = len(step3_tickers)
-    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
-
-    portfolio = {}
-    for ticker in step3_tickers:
-        if momentum.loc[ticker, '13612MR'] >= 0:
-            portfolio[ticker] = equal_weight
-
-    return portfolio
-
-
-def select_portfolio_strategy2(momentum, correlation):
-    """
-    Strategy 2: Strategy 1 + 음수 모멘텀 종목에 1/4 인버스 보유
-    """
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return {}
-
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/2
-    avg_momentum = momentum['13612MR']
-    step1_count = max(1, total_stocks // 2)
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-
-    # Step 2: 평균 R-squared 상위 1/2
-    avg_rsquared = (1 + np.sqrt(momentum['RS3']) +
-                    np.sqrt(momentum['RS6']) +
-                    np.sqrt(momentum['RS12'])) / 4
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, len(step1_tickers) // 2)
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-
-    # Step 3: Marginal mean 하위 1/3
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    available_tickers = [t for t in step2_tickers if t in corr_matrix.index]
-    if len(available_tickers) == 0:
-        return {}
-
-    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
-    n = len(available_tickers)
-
-    if n > 1:
-        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
-        step3_count = max(1, n // 3)
-        step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    else:
-        step3_tickers = available_tickers
-
-    # 포트폴리오 구성 (동일 비중, 음수 모멘텀은 1/4 인버스)
-    n_stocks = len(step3_tickers)
-    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
-
-    portfolio = {}
-    inverse_weight = 0.0
-
-    for ticker in step3_tickers:
-        if momentum.loc[ticker, '13612MR'] >= 0:
-            portfolio[ticker] = equal_weight
-        else:
-            inverse_weight += equal_weight / 4
-
-    if inverse_weight > 0:
-        portfolio['INVERSE'] = inverse_weight
-
-    return portfolio
-
-
-def select_portfolio_strategy3(momentum, correlation):
-    """
-    Strategy 3: 13612MR 상위 1/2 | mean-R2 상위 1/2 | correlation marginal mean 하위 1/4
-    """
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return {}
-
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/2
-    avg_momentum = momentum['13612MR']
-    step1_count = max(1, total_stocks // 2)
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-
-    # Step 2: 평균 R-squared 상위 1/2
-    avg_rsquared = (1 + np.sqrt(momentum['RS3']) +
-                    np.sqrt(momentum['RS6']) +
-                    np.sqrt(momentum['RS12'])) / 4
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, len(step1_tickers) // 2)
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-
-    # Step 3: Marginal mean 하위 1/4
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    available_tickers = [t for t in step2_tickers if t in corr_matrix.index]
-    if len(available_tickers) == 0:
-        return {}
-
-    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
-    n = len(available_tickers)
-
-    if n > 1:
-        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
-        step3_count = max(1, n // 4)
-        step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    else:
-        step3_tickers = available_tickers
-
-    # 포트폴리오 구성
-    n_stocks = len(step3_tickers)
-    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
-
-    portfolio = {}
-    for ticker in step3_tickers:
-        if momentum.loc[ticker, '13612MR'] >= 0:
-            portfolio[ticker] = equal_weight
-
-    return portfolio
-
-
-def select_portfolio_strategy4(momentum, correlation):
-    """
-    Strategy 4: 13612MR 상위 1/3 | mean-R2 상위 1/3 | correlation marginal mean 하위 1/3
-    """
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return {}
-
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/3
-    avg_momentum = momentum['13612MR']
-    step1_count = max(1, total_stocks // 3)
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-
-    # Step 2: 평균 R-squared 상위 1/3
-    avg_rsquared = (1 + np.sqrt(momentum['RS3']) +
-                    np.sqrt(momentum['RS6']) +
-                    np.sqrt(momentum['RS12'])) / 4
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, len(step1_tickers) // 3)
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-
-    # Step 3: Marginal mean 하위 1/3
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    available_tickers = [t for t in step2_tickers if t in corr_matrix.index]
-    if len(available_tickers) == 0:
-        return {}
-
-    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
-    n = len(available_tickers)
-
-    if n > 1:
-        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
-        step3_count = max(1, n // 3)
-        step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    else:
-        step3_tickers = available_tickers
-
-    # 포트폴리오 구성
-    n_stocks = len(step3_tickers)
-    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
-
-    portfolio = {}
-    for ticker in step3_tickers:
-        if momentum.loc[ticker, '13612MR'] >= 0:
-            portfolio[ticker] = equal_weight
-
-    return portfolio
-
-
-def select_portfolio_strategy5(momentum, correlation):
-    """
-    Strategy 5: 13612MR 상위 1/2 | mean-R2 상위 1/3 | correlation marginal mean 하위 1/3
-    """
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return {}
-
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/2
-    avg_momentum = momentum['13612MR']
-    step1_count = max(1, total_stocks // 2)
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-
-    # Step 2: 평균 R-squared 상위 1/3
-    avg_rsquared = (1 + np.sqrt(momentum['RS3']) +
-                    np.sqrt(momentum['RS6']) +
-                    np.sqrt(momentum['RS12'])) / 4
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, len(step1_tickers) // 3)
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-
-    # Step 3: Marginal mean 하위 1/3
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    available_tickers = [t for t in step2_tickers if t in corr_matrix.index]
-    if len(available_tickers) == 0:
-        return {}
-
-    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
-    n = len(available_tickers)
-
-    if n > 1:
-        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
-        step3_count = max(1, n // 3)
-        step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    else:
-        step3_tickers = available_tickers
-
-    # 포트폴리오 구성
-    n_stocks = len(step3_tickers)
-    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
-
-    portfolio = {}
-    for ticker in step3_tickers:
-        if momentum.loc[ticker, '13612MR'] >= 0:
-            portfolio[ticker] = equal_weight
-
-    return portfolio
-
-
-def select_portfolio_strategy6(momentum, correlation):
-    """
-    Strategy 6: 13612MR 상위 1/2 | mean-R2 상위 1/3 | correlation marginal mean 하위 1/4
-    """
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return {}
-
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/2
-    avg_momentum = momentum['13612MR']
-    step1_count = max(1, total_stocks // 2)
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-
-    # Step 2: 평균 R-squared 상위 1/3
-    avg_rsquared = (1 + np.sqrt(momentum['RS3']) +
-                    np.sqrt(momentum['RS6']) +
-                    np.sqrt(momentum['RS12'])) / 4
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, len(step1_tickers) // 3)
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-
-    # Step 3: Marginal mean 하위 1/4
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    available_tickers = [t for t in step2_tickers if t in corr_matrix.index]
-    if len(available_tickers) == 0:
-        return {}
-
-    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
-    n = len(available_tickers)
-
-    if n > 1:
-        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
-        step3_count = max(1, n // 4)
-        step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    else:
-        step3_tickers = available_tickers
-
-    # 포트폴리오 구성
-    n_stocks = len(step3_tickers)
-    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
-
-    portfolio = {}
-    for ticker in step3_tickers:
-        if momentum.loc[ticker, '13612MR'] >= 0:
-            portfolio[ticker] = equal_weight
-
-    return portfolio
-
-
-def select_portfolio_strategy7(momentum, correlation):
-    """
-    Strategy 7: Strategy 3 변형 + MACD 필터
-    - 13612MR 상위 1/2 | mean-R2 상위 1/2 | correlation marginal mean 하위 1/4
-    - (13612MR < 0) or (MACD 오실레이터 < 0)인 종목은 현금 보유
-    """
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return {}
-
-    total_stocks = len(momentum)
-
-    # Step 1: 평균 모멘텀 상위 1/2
-    avg_momentum = momentum['13612MR']
-    step1_count = max(1, total_stocks // 2)
-    step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
-
-    # Step 2: 평균 R-squared 상위 1/2
-    avg_rsquared = (1 + np.sqrt(momentum['RS3']) +
-                    np.sqrt(momentum['RS6']) +
-                    np.sqrt(momentum['RS12'])) / 4
-    step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, len(step1_tickers) // 2)
-    step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
-
-    # Step 3: Marginal mean 하위 1/4
-    corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    available_tickers = [t for t in step2_tickers if t in corr_matrix.index]
-    if len(available_tickers) == 0:
-        return {}
-
-    sub_corr = corr_matrix.loc[available_tickers, available_tickers]
-    n = len(available_tickers)
-
-    if n > 1:
-        marginal_means = (sub_corr.sum(axis=1) - 1) / (n - 1)
-        step3_count = max(1, n // 4)
-        step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
-    else:
-        step3_tickers = available_tickers
-
-    # 포트폴리오 구성 (MACD 오실레이터 조건 추가)
-    n_stocks = len(step3_tickers)
-    equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
-
-    portfolio = {}
-    for ticker in step3_tickers:
-        # MACD 오실레이터: 3MR - 12MR (단기 모멘텀 - 장기 모멘텀)
-        macd_osc = momentum.loc[ticker, '3MR'] - momentum.loc[ticker, '12MR']
-
-        # (13612MR >= 0) and (MACD 오실레이터 >= 0) 인 경우에만 투자
-        if momentum.loc[ticker, '13612MR'] >= 0 and macd_osc >= 0:
-            portfolio[ticker] = equal_weight
-
-    return portfolio
+STRATEGIES = [
+    StrategyConfig(
+        name="strategy1",
+        momentum_ratio=0.5,
+        rsquared_ratio=0.5,
+        correlation_ratio=0.33,
+        description="Base - 모멘텀 1/2 | R² 1/2 | 상관관계 1/3"
+    ),
+    StrategyConfig(
+        name="strategy2",
+        momentum_ratio=0.5,
+        rsquared_ratio=0.5,
+        correlation_ratio=0.33,
+        use_inverse=True,
+        description="Inverse - Strategy 1 + 인버스 ETF"
+    ),
+    StrategyConfig(
+        name="strategy3",
+        momentum_ratio=0.5,
+        rsquared_ratio=0.5,
+        correlation_ratio=0.25,
+        description="★ BEST - 분산 효과 강화 (상관관계 1/4)"
+    ),
+    StrategyConfig(
+        name="strategy4",
+        momentum_ratio=0.33,
+        rsquared_ratio=0.33,
+        correlation_ratio=0.33,
+        description="★ WORST - 엄격한 필터링 (모두 1/3)"
+    ),
+    StrategyConfig(
+        name="strategy5",
+        momentum_ratio=0.5,
+        rsquared_ratio=0.33,
+        correlation_ratio=0.33,
+        description="추세 품질 강화 (R² 1/3)"
+    ),
+    StrategyConfig(
+        name="strategy6",
+        momentum_ratio=0.5,
+        rsquared_ratio=0.33,
+        correlation_ratio=0.25,
+        description="추세 품질 + 분산 효과 강화"
+    ),
+    StrategyConfig(
+        name="strategy7",
+        momentum_ratio=0.5,
+        rsquared_ratio=0.5,
+        correlation_ratio=0.25,
+        use_macd_filter=True,
+        description="MACD Filter - Strategy 3 + MACD 오실레이터"
+    ),
+]
 
 
 # ============================================================
@@ -480,13 +165,13 @@ def main():
 
     # 3. 전략별 백테스트 실행
     print_progress(3, 4, "백테스트 실행 중...")
-    runner.add_strategy('strategy1', select_portfolio_strategy1)
-    runner.add_strategy('strategy2', select_portfolio_strategy2, use_inverse=True)
-    runner.add_strategy('strategy3', select_portfolio_strategy3)
-    runner.add_strategy('strategy4', select_portfolio_strategy4)
-    runner.add_strategy('strategy5', select_portfolio_strategy5)
-    runner.add_strategy('strategy6', select_portfolio_strategy6)
-    runner.add_strategy('strategy7', select_portfolio_strategy7)
+
+    for config in STRATEGIES:
+        # Factory 패턴으로 전략 선택 함수 생성
+        selector = create_strategy_selector(config)
+
+        # 백테스트 실행
+        runner.add_strategy(config.name, selector, config.use_inverse)
 
     # 4. 결과 저장 및 출력
     print_progress(4, 4, "결과 저장 중...")
