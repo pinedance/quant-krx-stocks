@@ -52,6 +52,9 @@ uv run python step4_selector.py  # 종목 선택 및 포트폴리오 구성
 uv run python step5_dashboards.py # 대시보드 생성
 uv run python step6_index.py     # 인덱스 페이지 생성
 
+# 백테스트 실행
+uv run python backtest01.py      # 모멘텀 전략 백테스트 (Strategy 1-6)
+
 # 결과 확인
 open output/index.html
 ```
@@ -84,6 +87,16 @@ output/
 │   ├── correlation.html         # 상관관계 매트릭스
 │   ├── correlation.tsv
 │   └── correlation.json
+├── portfolios/
+│   ├── scores.html              # 종목별 점수
+│   ├── selected.html            # 선택된 종목
+│   └── portfolio.html           # 포트폴리오 구성
+├── backtests/
+│   └── backtest01/              # 모멘텀 전략 백테스트
+│       ├── equity_curves.html   # 자산 곡선
+│       ├── monthly_returns.html # 월별 수익률
+│       ├── metrics.html         # 성과 지표
+│       └── trades.html          # 거래 내역
 └── dashboard/
     ├── momentum.html            # 모멘텀 대시보드
     ├── performance.html         # 성과 대시보드
@@ -181,9 +194,13 @@ output/
 ```yaml
 # 데이터 수집 설정
 data:
+  market: 'KRX'
   n_universe: 300              # KRX300
+  n_buffer: 100                # 데이터 미달 종목을 염두한 버퍼
   price:
-    periods: 63                 # 63개월 데이터
+    periods: 63                 # 63개월 데이터 (5년 + 버퍼 3개월)
+    min_periods: 12             # 최소 충족 데이터 수 (monthly)
+    download_source: null       # null=자동, "KRX", "NAVER", "YAHOO"
     download_method: parallel   # parallel, batch, onebyone
 
 # 시그널 분석 기간
@@ -192,6 +209,10 @@ signals:
     periods: [12, 36, 60]       # 12/36/60개월 분석
   correlation:
     periods: 12                  # 12개월 상관관계
+
+# 백테스트 설정
+backtest:
+  end_date: 2025-01-31          # 백테스트 종료일 (null이면 데이터 끝까지)
 
 # 시각화 설정
 visualization:
@@ -210,6 +231,12 @@ visualization:
   dendrogram:
     method: ward
     n_cluster: 25
+    height_per_item: 15         # Dendrogram 항목당 높이
+
+# 프로젝트 설정
+project:
+  name: "KRX Quantitative Analysis"
+  url: "https://pinedance.github.io/quant-krx-stocks/"
 ```
 
 ## GitHub Actions 자동화
@@ -224,7 +251,7 @@ visualization:
 - Push: master 브랜치에 push 시
 
 ### 배포 URL
-`https://<username>.github.io/quant-krx300/`
+`https://pinedance.github.io/quant-krx-stocks/`
 
 ### 캐싱
 - uv 캐시 활성화로 빌드 시간 단축 (5-10분 → 2-3분)
@@ -239,10 +266,25 @@ quant-krx300/
 │       ├── deploy.yml          # GitHub Actions 워크플로우
 │       └── README.md           # 워크플로우 설명
 ├── templates/
+│   ├── backtest_report.html    # 백테스트 리포트 템플릿
+│   ├── correlation_cluster.html # 클러스터 덴드로그램 템플릿
+│   ├── correlation_network.html # 네트워크 그래프 템플릿
 │   ├── dashboard.html          # 대시보드 템플릿
-│   ├── index.html              # 인덱스 페이지 템플릿
-│   └── table.html              # 테이블 템플릿
+│   ├── dataframe.html          # 데이터프레임 템플릿
+│   ├── datatable.html          # 데이터 테이블 템플릿
+│   └── index.html              # 인덱스 페이지 템플릿
 ├── output/                      # 생성된 웹사이트 (gitignore)
+├── core/                        # 코어 모듈
+│   ├── backtest.py             # 백테스트 엔진
+│   ├── config.py               # 설정 관리
+│   ├── fetcher.py              # 데이터 수집
+│   ├── file.py                 # 파일 입출력
+│   ├── finance.py              # 금융 계산
+│   ├── message.py              # 알림 메시지
+│   ├── models.py               # 데이터 모델
+│   ├── renderer.py             # HTML 렌더링
+│   ├── utils.py                # 유틸리티
+│   └── visualization.py        # 시각화
 ├── step1_list.py               # 종목 리스트
 ├── step2_price.py              # 가격 데이터
 ├── step3_signals.py            # 시그널 계산
@@ -250,6 +292,7 @@ quant-krx300/
 ├── step5_dashboards.py         # 대시보드 생성
 ├── step6_index.py              # 인덱스 페이지
 ├── step_all.py                 # 전체 파이프라인
+├── backtest01.py               # 모멘텀 전략 백테스트 (Strategy 1-6)
 ├── settings.yaml               # 설정 파일
 ├── pyproject.toml              # 프로젝트 의존성
 └── README.md
@@ -268,31 +311,62 @@ quant-krx300/
 
 전체 의존성은 `pyproject.toml` 참조
 
-## 향후 계획
+## 백테스트
 
-### 백테스트 기능
+`backtest01.py` - 모멘텀 기반 전략 백테스트
 
-조건:
-- Universe: KRX300 종목
-- 리밸런싱: 매월 1일, 전월 종가 기준
+### 공통 설정
+- **대상**: 시총 상위 300개 종목 (조건: 1년 데이터 존재)
+- **리밸런싱**: 매월 1일 (가격: 전월 종가)
+- **벤치마크**: 069500 (KODEX 200)
+- **인버스 ETF**: 114800 (KODEX 인버스)
 
-**전략 1**: 모멘텀 → 품질 → 상관관계 순 필터링
-- KRX300 모멘텀 상위 1/2 선택
-- (Slope × R-squared) 상위 1/2 선택
-- Correlation marginal sum 최소인 상위 1/3 선택
-- 모멘텀 > 0 종목 매수, 나머지 현금 보유
+### 지표 정의
+- **13612MR**: (1MR + 3MR + 6MR + 12MR) / 4 → 복합 모멘텀
+- **mean-R²**: (1 + √RS3 + √RS6 + √RS12) / 4 → 추세 품질
+- **correlation marginal mean**: 상관계수 행렬의 각 종목 평균값 → 분산 효과
 
-**전략 2**: 모멘텀 → 상관관계 → 품질 순 필터링
-- KRX300 모멘텀 상위 1/2 선택
-- Correlation marginal sum 최소인 상위 1/3 선택
-- (Slope × R-squared) 상위 1/2 선택
-- 모멘텀 > 0 종목 매수, 나머지 현금 보유
+### 전략 설명
 
-**전략 3**: 클러스터 기반 선택
-- KRX300 모멘텀 상위 1/2 선택
-- 계층적 클러스터링으로 25개 클러스터 생성
-- 각 클러스터에서 (Slope × R-squared) 최상위 1개 선택
-- 모멘텀 > 0 종목 매수, 나머지 현금 보유
+**Strategy 1 (Base)**
+- 필터링: 13612MR 상위 1/2 | mean-R² 상위 1/2 | correlation 하위 1/3
+- 포지션: 1/N 동일 비중, 13612MR < 0 종목은 현금 보유
+- 종목 수: ~25개
+
+**Strategy 2 (Inverse)**
+- 필터링: Strategy 1과 동일
+- 포지션: 1/N 동일 비중, 13612MR < 0 종목은 1/4 인버스 + 3/4 현금
+- 종목 수: ~25개
+
+**Strategy 3 ★ BEST**
+- 필터링: 13612MR 상위 1/2 | mean-R² 상위 1/2 | correlation 하위 1/4
+- 포지션: 1/N 동일 비중, 13612MR < 0 종목은 현금 보유
+- 종목 수: ~19개
+- 특징: 분산 효과 강화 (correlation 1/4)
+
+**Strategy 4 ★ WORST**
+- 필터링: 13612MR 상위 1/3 | mean-R² 상위 1/3 | correlation 하위 1/3
+- 포지션: 1/N 동일 비중, 13612MR < 0 종목은 현금 보유
+- 종목 수: ~11개
+- 특징: 모든 필터를 엄격하게 적용 (1/3)
+
+**Strategy 5**
+- 필터링: 13612MR 상위 1/2 | mean-R² 상위 1/3 | correlation 하위 1/3
+- 포지션: 1/N 동일 비중, 13612MR < 0 종목은 현금 보유
+- 종목 수: ~16개
+- 특징: 추세 품질 필터 강화
+
+**Strategy 6**
+- 필터링: 13612MR 상위 1/2 | mean-R² 상위 1/3 | correlation 하위 1/4
+- 포지션: 1/N 동일 비중, 13612MR < 0 종목은 현금 보유
+- 종목 수: ~12개
+- 특징: 추세 품질 + 분산 효과 강화
+
+### 출력 리포트
+- **equity_curves.html**: 자산 곡선 비교
+- **monthly_returns.html**: 월별 수익률 히트맵
+- **metrics.html**: 성과 지표 (CAGR, MDD, Sharpe, Sortino 등)
+- **trades.html**: 거래 내역 및 포지션 변화
 
 ## 라이선스
 
@@ -300,4 +374,4 @@ MIT License
 
 ## 문의
 
-Issues: https://github.com/<username>/quant-krx300/issues
+Issues: https://github.com/pinedance/quant-krx-stocks/issues
