@@ -30,7 +30,53 @@ def main():
     print_progress(2, 4, f"가격 데이터 다운로드 ({price_periods}개월치)...")
     start_date = date_before(months=price_periods)
     print(f"      시작일: {start_date}")
-    tickers_lst = tickers['Code'].to_list()[:n_try]
+
+    # n_try만큼만 선택
+    tickers_subset = tickers.head(n_try)
+
+    # 위험 종목 필터링
+    exclude_risky = settings.stocks.price.exclude_risky_stocks
+    if exclude_risky:
+        risky_columns = ['관리종목여부', '거래정지여부', '투자주의여부', '투자경고여부', '투자위험여부']
+        # 컬럼이 존재하는지 확인
+        existing_risky_columns = [col for col in risky_columns if col in tickers_subset.columns]
+
+        if existing_risky_columns:
+            total_count = len(tickers_subset)
+            # 위험 종목 제외: 모든 플래그가 False인 종목만 선택
+            mask = True
+            for col in existing_risky_columns:
+                mask = mask & (~tickers_subset[col])
+
+            # 제외된 종목 정보
+            excluded = tickers_subset[~mask]
+            tickers_subset = tickers_subset[mask]
+
+            excluded_count = len(excluded)
+            remaining_count = len(tickers_subset)
+
+            print(f"      위험 종목 필터링:")
+            print(f"      - 전체: {total_count}개")
+            print(f"      - 제외: {excluded_count}개")
+            print(f"      - 다운로드 대상: {remaining_count}개")
+
+            if excluded_count > 0 and excluded_count <= 20:
+                # 제외된 종목이 20개 이하면 전체 출력
+                excluded_list = [f"{row['Code']}({row['Name']})"
+                               for _, row in excluded.iterrows()
+                               if 'Code' in row and 'Name' in row]
+                print(f"      - 제외된 종목: {', '.join(excluded_list)}")
+            elif excluded_count > 20:
+                # 20개 초과면 일부만 출력
+                excluded_list = [f"{row['Code']}({row['Name']})"
+                               for _, row in excluded.head(10).iterrows()
+                               if 'Code' in row and 'Name' in row]
+                print(f"      - 제외된 종목 (일부): {', '.join(excluded_list)} ...")
+        else:
+            print(f"      위험 종목 컬럼이 없어 필터링을 건너뜁니다.")
+
+    # Code 리스트로 변환
+    tickers_lst = tickers_subset['Code'].tolist()
     closeD = get_price(tickers_lst, start_date=start_date)
     print(f"      다운로드 완료 | 종목(열): {closeD.shape[1]}, 날짜(행): {closeD.shape[0]}")
 
