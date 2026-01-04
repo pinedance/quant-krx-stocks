@@ -1,7 +1,7 @@
 # Custom
 .DEV
 .env
-test.py
+_*.py
 output/
 
 # Python-generated files

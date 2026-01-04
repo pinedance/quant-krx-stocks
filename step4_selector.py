@@ -303,7 +303,7 @@ def main():
     print_step_header(4, "종목 선택 및 포트폴리오 구성")
 
     # 설정 로드
-    market = settings.data.market
+    market = settings.stocks.list.market
     list_dir = settings.output.list_dir.path
     signal_dir = settings.output.signal_dir.path
     portfolio_base_dir = settings.output.portfolio_dir.path

@@ -12,9 +12,9 @@ def main():
     print_step_header(2, "KRX300 데이터 생성 및 저장")
 
     # 설정 로드
-    n_universe = settings.data.n_universe
-    n_try = n_universe + settings.data.n_buffer
-    price_periods = settings.data.price.periods
+    n_universe = settings.stocks.list.n_universe
+    n_try = n_universe + settings.stocks.list.n_buffer
+    price_periods = settings.stocks.price.periods
     # input dir
     list_dir = settings.output.list_dir.path
     # output dir
@@ -22,7 +22,7 @@ def main():
 
     # 1. 종목 리스트
     print_progress(1, 4, "종목 리스트 가져오기...")
-    market = settings.data.market
+    market = settings.stocks.list.market
     tickers = import_dataframe_from_json(f'{list_dir}/{market}.json')
     print(f"      총 {len(tickers)}개 종목")
 
@@ -39,7 +39,7 @@ def main():
     _closeM = closeD.resample('ME').last()  # 'M' → 'ME' (Month End)
 
     # min_periods: 최소 개월 수 (전후 1개월씩 추가)
-    min_periods = 1 + settings.data.price.min_periods + 1
+    min_periods = 1 + settings.stocks.price.min_periods + 1
 
     # 처음 min_periods 개월 동안 데이터가 완전한 종목만 선택 (최근 상장 종목 제외)
     _closeM_filtered = _closeM.iloc[:min_periods].dropna(axis=1, how='any')

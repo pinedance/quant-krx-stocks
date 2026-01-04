@@ -31,7 +31,7 @@ def get_settings():
     Examples:
     ---------
     >>> settings = get_settings()
-    >>> settings.data.n_universe
+    >>> settings.stocks.list.n_universe
     300
     >>> settings.visualization.periods
     [12, 36, 60]
@@ -60,7 +60,7 @@ def get_config(key_path, default=None):
 
     Examples:
     ---------
-    >>> get_config('data.n_universe')
+    >>> get_config('stocks.list.n_universe')
     300
     >>> get_config('visualization.periods')
     [12, 36, 60]

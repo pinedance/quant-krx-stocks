@@ -13,7 +13,7 @@ def main():
     print_step_header(1, "종목 리스트 생성")
 
     # KRX300 종목 리스트 가져오기
-    market = settings.data.market
+    market = settings.stocks.list.market
 
     print("\n종목 리스트를 가져오는 중...")
     df = get_list(market)
