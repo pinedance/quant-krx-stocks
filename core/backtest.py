@@ -68,6 +68,13 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
             momentum[f'AS{period}'] = np.nan
             momentum[f'RS{period}'] = np.nan
 
+    # MACD Histogram 계산
+    if len(prices) >= 26:  # slow_period
+        macd_hist = calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9)
+        momentum['MACD_Histogram'] = macd_hist.iloc[-1]
+    else:
+        momentum['MACD_Histogram'] = np.nan
+
     # Correlation 계산 (최근 12개월)
     corr_periods = settings.signals.correlation.periods
     if len(prices) >= corr_periods:
@@ -78,6 +85,56 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
         correlation[:] = np.nan
 
     return momentum, correlation
+
+
+def calculate_macd(closeM: pd.DataFrame, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9) -> pd.DataFrame:
+    """
+    표준 MACD 지표 계산 (MACD Line, Signal Line, MACD Histogram)
+
+    Parameters:
+    -----------
+    closeM : pd.DataFrame
+        월별 종가 데이터 (행: 날짜, 열: 종목)
+    fast_period : int
+        단기 EMA 기간 (기본값: 12개월)
+    slow_period : int
+        장기 EMA 기간 (기본값: 26개월)
+    signal_period : int
+        Signal Line EMA 기간 (기본값: 9개월)
+
+    Returns:
+    --------
+    pd.DataFrame
+        MACD Histogram 값 (행: 날짜, 열: 종목)
+        양수: 상승 모멘텀, 음수: 하락 모멘텀
+    """
+    # 각 종목별로 MACD 계산
+    macd_histogram = pd.DataFrame(index=closeM.index, columns=closeM.columns)
+
+    for ticker in closeM.columns:
+        prices = closeM[ticker].dropna()
+
+        if len(prices) < slow_period:
+            # 데이터가 충분하지 않으면 NaN
+            continue
+
+        # EMA 계산
+        ema_fast = prices.ewm(span=fast_period, adjust=False).mean()
+        ema_slow = prices.ewm(span=slow_period, adjust=False).mean()
+
+        # MACD Line = EMA(12) - EMA(26)
+        macd_line = ema_fast - ema_slow
+
+        # Signal Line = EMA(9) of MACD Line
+        signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
+
+        # MACD Histogram = MACD Line - Signal Line
+        macd_hist = macd_line - signal_line
+
+        # 결과 저장
+        macd_histogram.loc[prices.index, ticker] = macd_hist
+
+    return macd_histogram
 
 
 # ============================================================
@@ -1012,8 +1069,9 @@ def build_portfolio(
 
         # MACD 필터 체크
         if use_macd_filter:
-            macd_osc = momentum.loc[ticker, '3MR'] - momentum.loc[ticker, '12MR']
-            if avg_mom < 0 or macd_osc < 0:
+            # 표준 MACD Histogram 사용 (MACD Line - Signal Line)
+            macd_hist = momentum.loc[ticker, 'MACD_Histogram']
+            if avg_mom < 0 or macd_hist < 0:
                 continue  # 현금 보유
 
         # 기본 필터 (13612MR >= 0)

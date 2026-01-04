@@ -45,9 +45,9 @@ class SelectionConfig:
 SELECTION_STRATEGIES = [
     SelectionConfig(
         name="strategy1",
-        momentum_ratio=0.5,
-        rsquared_ratio=0.5,
-        correlation_ratio=0.33,
+        momentum_ratio=1/2,
+        rsquared_ratio=1/2,
+        correlation_ratio=1/3,
         description="Base - 모멘텀 1/2 | R² 1/2 | 상관관계 1/3"
     ),
     # 추가 전략 정의 예시:

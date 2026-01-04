@@ -51,10 +51,12 @@ Strategy 6
 
 Strategy 7 (MACD Filter)
   필터링: 13612MR 상위 1/2 | mean-R² 상위 1/2 | correlation 하위 1/4
-  포지션: 1/N 동일 비중, (13612MR < 0) or (MACD < 0) 종목은 현금 보유
+  포지션: 1/N 동일 비중, (13612MR < 0) or (MACD Histogram < 0) 종목은 현금 보유
   종목 수: ~19개 이하
-  특징: Strategy 3 + MACD 오실레이터 필터 추가
-         MACD = 3MR - 12MR (단기-장기 모멘텀 차이)
+  특징: Strategy 3 + 표준 MACD 오실레이터 필터 추가
+         MACD Histogram = (MACD Line - Signal Line)
+         MACD Line = EMA(12) - EMA(26)
+         Signal Line = EMA(9) of MACD Line
 """
 
 import pandas as pd
@@ -74,52 +76,52 @@ SUBDIR = "backtest01"  # 현재 자기 자신 python file name
 STRATEGIES = [
     StrategyConfig(
         name="strategy1",
-        momentum_ratio=0.5,
-        rsquared_ratio=0.5,
-        correlation_ratio=0.33,
+        momentum_ratio=1/2,
+        rsquared_ratio=1/2,
+        correlation_ratio=1/3,
         description="Base - 모멘텀 1/2 | R² 1/2 | 상관관계 1/3"
     ),
     StrategyConfig(
         name="strategy2",
-        momentum_ratio=0.5,
-        rsquared_ratio=0.5,
-        correlation_ratio=0.33,
+        momentum_ratio=1/2,
+        rsquared_ratio=1/2,
+        correlation_ratio=1/3,
         use_inverse=True,
         description="Inverse - Strategy 1 + 인버스 ETF"
     ),
     StrategyConfig(
         name="strategy3",
-        momentum_ratio=0.5,
-        rsquared_ratio=0.5,
-        correlation_ratio=0.25,
+        momentum_ratio=1/2,
+        rsquared_ratio=1/2,
+        correlation_ratio=1/4,
         description="★ BEST - 분산 효과 강화 (상관관계 1/4)"
     ),
     StrategyConfig(
         name="strategy4",
-        momentum_ratio=0.33,
-        rsquared_ratio=0.33,
-        correlation_ratio=0.33,
+        momentum_ratio=1/3,
+        rsquared_ratio=1/3,
+        correlation_ratio=1/3,
         description="★ WORST - 엄격한 필터링 (모두 1/3)"
     ),
     StrategyConfig(
         name="strategy5",
-        momentum_ratio=0.5,
-        rsquared_ratio=0.33,
-        correlation_ratio=0.33,
+        momentum_ratio=1/2,
+        rsquared_ratio=1/3,
+        correlation_ratio=1/3,
         description="추세 품질 강화 (R² 1/3)"
     ),
     StrategyConfig(
         name="strategy6",
-        momentum_ratio=0.5,
-        rsquared_ratio=0.33,
-        correlation_ratio=0.25,
+        momentum_ratio=1/2,
+        rsquared_ratio=1/3,
+        correlation_ratio=1/4,
         description="추세 품질 + 분산 효과 강화"
     ),
     StrategyConfig(
         name="strategy7",
-        momentum_ratio=0.5,
-        rsquared_ratio=0.5,
-        correlation_ratio=0.25,
+        momentum_ratio=1/2,
+        rsquared_ratio=1/2,
+        correlation_ratio=1/4,
         use_macd_filter=True,
         description="MACD Filter - Strategy 3 + MACD 오실레이터"
     ),
