@@ -1290,16 +1290,6 @@ def apply_filters(
     step3_count = max(1, int(len(marginal_means) * correlation_ratio))
     step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
 
-    # DEBUG: 필터링 결과 출력 (첫 번째 호출 시에만)
-    if not hasattr(apply_filters, '_debug_printed'):
-        print(f"\n[DEBUG] 필터링 단계별 종목 수:")
-        print(f"  전체: {total_stocks}개")
-        print(f"  Step 1 (모멘텀 {momentum_ratio:.1%}): {len(step1_tickers)}개")
-        print(f"  Step 2 (R² {rsquared_ratio:.1%}): {len(step2_tickers)}개")
-        print(f"  Step 3 (상관 {correlation_ratio:.1%}): {len(step3_tickers)}개")
-        print(f"  계산식: {total_stocks} × {momentum_ratio} × {rsquared_ratio} × {correlation_ratio} = {total_stocks * momentum_ratio * rsquared_ratio * correlation_ratio:.1f}\n")
-        apply_filters._debug_printed = True
-
     return step3_tickers
 
 
@@ -1346,14 +1336,6 @@ def build_portfolio(
         portfolio = {ticker: equal_weight for ticker in valid_tickers}
         inverse_weight = 0.0
 
-        # DEBUG
-        if not hasattr(build_portfolio, '_debug_printed'):
-            print(f"[DEBUG] 포트폴리오 필터링:")
-            print(f"  선택된 종목: {n_stocks}개")
-            print(f"  MACD+모멘텀 필터 통과: {len(valid_tickers)}개")
-            print(f"  투자 비중: {len(valid_tickers) * equal_weight:.1%}\n")
-            build_portfolio._debug_printed = True
-
     else:
         # 기본 필터만 적용
         positive_mask = mom_values >= 0
@@ -1368,15 +1350,6 @@ def build_portfolio(
         if use_inverse:
             n_negative = negative_mask.sum()
             inverse_weight = (equal_weight / 4) * n_negative
-
-        # DEBUG
-        if not hasattr(build_portfolio, '_debug_printed'):
-            print(f"[DEBUG] 포트폴리오 필터링:")
-            print(f"  선택된 종목: {n_stocks}개")
-            print(f"  모멘텀 >= 0: {len(valid_tickers)}개")
-            print(f"  모멘텀 < 0: {negative_mask.sum()}개")
-            print(f"  투자 비중: {len(valid_tickers) * equal_weight:.1%}\n")
-            build_portfolio._debug_printed = True
 
     # 인버스 가중치 추가
     if inverse_weight > 0 and use_inverse:
