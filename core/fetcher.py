@@ -9,11 +9,23 @@ import requests
 from typing import Optional, Set
 from core.config import get_config
 
+STOCK_LIST_COLUMN_NAMES = ["Code", "Name", "Market", "Volume", "Amount", "Marcap", "Stocks"]
 
 def _get_krx_list():
     """KRX 전체 종목 리스트를 가져옵니다 (FinanceDataReader 사용)"""
     cols = ["Code", "ISU_CD", "Name", "Market", "Volume", "Amount", "Marcap", "Stocks", "MarketId"]
-    return fdr.StockListing("KRX")[cols].sort_values(by='Marcap', ascending=False)
+    df = fdr.StockListing("KRX")[cols]
+
+    # 숫자형 컬럼 변환 (문자열 -> float)
+    numeric_columns = ['Volume', 'Amount', 'Marcap', 'Stocks']
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # STOCK_LIST_COLUMN_NAMES에 맞춰 컬럼 선택 및 정렬
+    df = df[STOCK_LIST_COLUMN_NAMES].sort_values(by='Marcap', ascending=False, ignore_index=True)
+
+    return df
 
 
 def _get_naver_stock_data(
@@ -115,52 +127,80 @@ def _get_naver_list():
     df['is_investment_warning'] = df['itemcode'].isin(investment_warning_stocks)
     df['is_investment_risk'] = df['itemcode'].isin(investment_risk_stocks)
 
-    # 컬럼 이름 매핑 (기존 포맷과 호환)
+    # Market 컬럼 생성 (sosok: 0=KOSPI, 1=KOSDAQ)
+    df['Market'] = df['sosok'].astype(str).map({'0': 'KOSPI', '1': 'KOSDAQ'})
+
+    # 숫자형 컬럼 변환 (문자열 -> float)
+    numeric_columns = [
+        'accQuant', 'accAmount', 'marketSum', 'listedStockCnt',
+        'propertyTotal', 'debtTotal', 'sales', 'salesIncreasingRate',
+        'operatingProfit', 'operatingProfitIncreasingRate', 'netIncome',
+        'eps', 'per', 'pbr', 'roe', 'roa', 'dividend', 'reserveRatio'
+    ]
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # 컬럼 이름 매핑 (한글)
     column_mapping = {
         'itemcode': 'Code',
         'itemname': 'Name',
-        'sosok': 'MarketCode',
         'accQuant': 'Volume',
         'accAmount': 'Amount',
         'marketSum': 'Marcap',
         'listedStockCnt': 'Stocks',
-        'nowVal': 'Close',
-        'openVal': 'Open',
-        'highVal': 'High',
-        'lowVal': 'Low',
-        'changeVal': 'Change',
-        'changeRate': 'ChgRate',
-        'eps': 'EPS',
+        # 재무상태표
+        'propertyTotal': '자산총계',
+        'debtTotal': '부채총계',
+        # 손익계산서
+        'sales': '매출액',
+        'salesIncreasingRate': '매출액증가율',
+        'operatingProfit': '영업이익',
+        'operatingProfitIncreasingRate': '영업이익증가율',
+        'netIncome': '당기순이익',
+        # 주당지표
+        'eps': '주당순이익',
+        'dividend': '보통주배당금',
+        # 재무비율
         'per': 'PER',
-        'pbr': 'PBR',
         'roe': 'ROE',
         'roa': 'ROA',
-        'dividend': 'DPS',
-        'dividendRate': 'DividendYield',
-        'propertyTotal': 'Assets',
-        'debtTotal': 'Liabilities',
-        'sales': 'Revenue',
-        'operatingProfit': 'OperatingIncome',
-        'netIncome': 'NetIncome',
-        'frgnRate': 'ForeignRate',
-        'reserveRatio': 'ReserveRatio',
-        'is_management': 'IsManagement',
-        'is_trading_halt': 'IsTradingHalt',
-        'is_investment_caution': 'IsInvestmentCaution',
-        'is_investment_warning': 'IsInvestmentWarning',
-        'is_investment_risk': 'IsInvestmentRisk'
+        'pbr': 'PBR',
+        'reserveRatio': '유보율',
+        # Boolean 컬럼
+        'is_management': '관리종목여부',
+        'is_trading_halt': '거래정지여부',
+        'is_investment_caution': '투자주의여부',
+        'is_investment_warning': '투자경고여부',
+        'is_investment_risk': '투자위험여부'
     }
 
     # 컬럼명 변경
     df = df.rename(columns=column_mapping)
 
-    # Market 컬럼 추가 (MarketCode 0=KOSPI, 1=KOSDAQ)
-    if 'MarketCode' in df.columns:
-        df['Market'] = df['MarketCode'].map({'0': 'KOSPI', '1': 'KOSDAQ'})
+    # 컬럼 순서 정의 (STOCK_LIST_COLUMN_NAMES 기준 + 추가 컬럼)
+    ordered_columns = [
+        # 기본 컬럼 (STOCK_LIST_COLUMN_NAMES)
+        'Code', 'Name', 'Market', 'Volume', 'Amount', 'Marcap', 'Stocks',
+        # 재무상태표
+        '자산총계', '부채총계',
+        # 손익계산서
+        '매출액', '매출액증가율', '영업이익', '영업이익증가율', '당기순이익',
+        # 주당지표
+        '주당순이익', '보통주배당금',
+        # 재무비율
+        'PER', 'ROE', 'ROA', 'PBR', '유보율',
+        # Boolean 컬럼
+        '관리종목여부', '거래정지여부', '투자주의여부', '투자경고여부', '투자위험여부'
+    ]
+
+    # 존재하는 컬럼만 선택하여 순서대로 배치
+    available_columns = [col for col in ordered_columns if col in df.columns]
+    df = df[available_columns]
 
     # Marcap으로 정렬
     if 'Marcap' in df.columns:
-        df = df.sort_values(by='Marcap', ascending=False)
+        df = df.sort_values(by='Marcap', ascending=False, ignore_index=True)
 
     return df
 
@@ -186,7 +226,7 @@ def get_list(market="KRX", list_source=None):
 
     # list_source가 지정되지 않으면 설정에서 읽기
     if list_source is None:
-        list_source = get_config('stocks.list.source', 'KRX')
+        list_source = get_config('stocks.list.source', 'Naver')
 
     print(f"데이터 소스: {list_source}")
 
