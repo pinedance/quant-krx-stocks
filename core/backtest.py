@@ -501,6 +501,32 @@ def run_backtest(
                 print(f"  {signal_date.strftime('%Y-%m')}: 포트폴리오 가치 = {current_value:.4f} "
                       f"({len(stock_portfolio)}개 종목)")
 
+    # 최종 날짜(end_idx)의 시그널로 "미래 투자용" 포트폴리오 생성
+    if end_idx < len(closeM):
+        final_date = closeM.index[end_idx]
+        final_momentum, final_correlation = signal_provider(end_idx)
+        final_portfolio = strategy_selector(final_momentum, final_correlation)
+
+        # Holdings 기록 (수익률 계산 없이 포트폴리오만)
+        final_inverse_weight = final_portfolio.get('INVERSE', 0.0)
+        final_stock_portfolio = {k: v for k, v in final_portfolio.items() if k != 'INVERSE'}
+
+        holdings_history.append({
+            'date': final_date,
+            'holdings': final_stock_portfolio.copy(),
+            'n_stocks': len(final_stock_portfolio),
+            'inverse_weight': final_inverse_weight,
+            'cash_weight': 1.0 - sum(final_portfolio.values())
+        })
+
+        if verbose:
+            if final_inverse_weight > 0:
+                print(f"\n  최종 포트폴리오 ({final_date.strftime('%Y-%m')}): "
+                      f"{len(final_stock_portfolio)}개 종목, 인버스 {final_inverse_weight:.2%}")
+            else:
+                print(f"\n  최종 포트폴리오 ({final_date.strftime('%Y-%m')}): "
+                      f"{len(final_stock_portfolio)}개 종목")
+
     return (pd.Series(portfolio_values, index=dates),
             pd.Series(monthly_returns, index=dates),
             holdings_history)
