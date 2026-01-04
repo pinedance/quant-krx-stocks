@@ -18,7 +18,152 @@ from core.config import settings
 
 
 # ============================================================
-# Signal 계산
+# Signal 계산 (전체 시계열)
+# ============================================================
+
+def calculate_all_momentum(closeM: pd.DataFrame, closeM_log: pd.DataFrame, verbose: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    전체 시계열의 모멘텀 지표 계산 (lookahead bias 방지)
+    pandas 벡터 연산 사용으로 고속 처리
+
+    Parameters:
+    -----------
+    closeM : pd.DataFrame
+        가격 데이터 (rows=dates, cols=tickers)
+    closeM_log : pd.DataFrame
+        로그 가격 데이터
+    verbose : bool
+        진행 상황 출력 여부
+
+    Returns:
+    --------
+    tuple
+        (mmt_13612MR, rs_3, rs_6, rs_12) - 각각 (rows=dates, cols=tickers)
+    """
+    if verbose:
+        print(f"      모멘텀 지표 계산 중... (벡터 연산)")
+
+    # 1. 13612MR 계산 (벡터 연산, lookahead bias 자동 방지)
+    mr_1 = closeM.pct_change(periods=1)
+    mr_3 = closeM.pct_change(periods=3)
+    mr_6 = closeM.pct_change(periods=6)
+    mr_12 = closeM.pct_change(periods=12)
+
+    mmt_13612MR = (mr_1 + mr_3 + mr_6 + mr_12) / 4
+
+    if verbose:
+        print(f"        ✓ 13612MR 계산 완료")
+
+    # 2. mean-R² 계산: (1 + √RS3 + √RS6 + √RS12) / 4
+    # Rolling window로 각 period별 R² 계산 (최적화: 벡터 연산)
+    rs_3 = pd.DataFrame(index=closeM_log.index, columns=closeM_log.columns, dtype=float)
+    rs_6 = pd.DataFrame(index=closeM_log.index, columns=closeM_log.columns, dtype=float)
+    rs_12 = pd.DataFrame(index=closeM_log.index, columns=closeM_log.columns, dtype=float)
+
+    if verbose:
+        print(f"        R² 계산 중... (numpy 벡터 연산)")
+
+    # 각 period별로 rolling R² 계산 (numpy 벡터화)
+    for period, rs_result in [(3, rs_3), (6, rs_6), (12, rs_12)]:
+        if len(closeM_log) < period:
+            continue
+
+        # X는 모든 window에 공통
+        x = np.arange(period)
+        x_mean = (period - 1) / 2
+        x_centered = x - x_mean
+        x_var = np.sum(x_centered ** 2)
+
+        # 각 종목별로 계산 (종목별 loop는 유지, 시점별은 벡터화)
+        for ticker in closeM_log.columns:
+            prices = closeM_log[ticker]  # Series로 유지 (index 보존)
+            n = len(prices)
+
+            if n < period:
+                continue
+
+            # Rolling window 계산
+            for i in range(period - 1, n):
+                y = prices.iloc[i - period + 1:i + 1].values  # 해당 window의 값만
+
+                # NaN 체크
+                if not np.all(np.isfinite(y)):
+                    continue
+
+                # Linear regression (vectorized)
+                y_mean = np.mean(y)
+                y_centered = y - y_mean
+
+                # Slope
+                numerator = np.sum(x_centered * y_centered)
+                slope = numerator / x_var
+
+                # R²
+                y_pred = slope * x + (y_mean - slope * x_mean)
+                ss_res = np.sum((y - y_pred) ** 2)
+                ss_tot = np.sum(y_centered ** 2)
+                r2 = 1 - (ss_res / ss_tot) if ss_tot > 1e-10 else 0
+
+                # i는 prices의 iloc 인덱스, 날짜 인덱스로 저장
+                date_idx = prices.index[i]
+                rs_result.loc[date_idx, ticker] = r2
+
+    if verbose:
+        print(f"        ✓ R² 계산 완료")
+
+    if verbose:
+        print(f"      모멘텀 지표 계산 완료!")
+
+    return mmt_13612MR, rs_3, rs_6, rs_12
+
+
+def calculate_all_macd(closeM: pd.DataFrame, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9, verbose: bool = True) -> pd.DataFrame:
+    """
+    전체 시계열의 MACD Histogram 계산 (lookahead bias 방지)
+    DataFrame 전체 벡터 연산으로 고속 처리
+
+    Parameters:
+    -----------
+    closeM : pd.DataFrame
+        가격 데이터 (rows=dates, cols=tickers)
+    fast_period : int
+        단기 EMA 기간
+    slow_period : int
+        장기 EMA 기간
+    signal_period : int
+        Signal Line EMA 기간
+    verbose : bool
+        진행 상황 출력 여부
+
+    Returns:
+    --------
+    pd.DataFrame
+        MACD Histogram (rows=dates, cols=tickers)
+    """
+    if verbose:
+        print(f"      MACD Histogram 계산 중... (전체 DataFrame 벡터 연산)")
+
+    # EMA 계산 (전체 DataFrame에 대해 한번에, ewm은 자동으로 lookahead bias 방지)
+    ema_fast = closeM.ewm(span=fast_period, adjust=False).mean()
+    ema_slow = closeM.ewm(span=slow_period, adjust=False).mean()
+
+    # MACD Line = EMA(fast) - EMA(slow)
+    macd_line = ema_fast - ema_slow
+
+    # Signal Line = EMA(signal_period) of MACD Line
+    signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
+
+    # MACD Histogram = MACD Line - Signal Line
+    macd_histogram = macd_line - signal_line
+
+    if verbose:
+        print(f"      MACD Histogram 계산 완료!")
+
+    return macd_histogram
+
+
+# ============================================================
+# Signal 계산 (단일 시점 - 하위 호환성 유지)
 # ============================================================
 
 def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, end_idx: int, include_macd: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -299,7 +444,7 @@ def run_backtest(
         signal_provider = lambda end_idx: calculate_signals_at_date(closeM_log, closeM, end_idx, include_macd=True)
 
     # 최소 12개월 이후부터 백테스트 시작
-    start_idx = 12
+    start_idx = 12 + 1
 
     # 종료 인덱스 결정
     if end_date is not None:
@@ -486,7 +631,24 @@ class BacktestRunner:
         self.benchmark_prices = None
         self.benchmark_returns = None
         self.inverse_etf_prices = None
-        self._signal_cache = {}  # 시그널 캐시: (end_idx, needs_macd) -> (momentum, correlation)
+        self._correlation_cache = {}  # Correlation 캐시: end_idx -> correlation_matrix
+
+        # Pre-compute: 전체 시계열 지표 계산
+        print("\n" + "="*70)
+        print("지표 사전 계산 (Pre-computation)")
+        print("="*70)
+
+        # 1. 모멘텀 지표 계산
+        self.mmt_13612MR, self.rs_3, self.rs_6, self.rs_12 = calculate_all_momentum(
+            self.closeM,
+            self.closeM_log,
+            verbose=True
+        )
+
+        # 2. MACD Histogram 계산 (필요 시에만 - 나중에 lazy compute 가능)
+        self.macd_histogram = None  # 필요할 때 계산
+
+        print("="*70)
 
     def load_benchmark(self, ticker: str = '069500') -> None:
         """벤치마크 ETF 데이터 로드"""
@@ -505,9 +667,45 @@ class BacktestRunner:
         else:
             print(f"      경고: 인버스 ETF 데이터 없음")
 
-    def _create_cached_signal_provider(self, needs_macd: bool) -> Callable:
+    def _ensure_macd_computed(self) -> None:
+        """MACD가 필요할 때 lazy하게 계산"""
+        if self.macd_histogram is None:
+            print("\n" + "="*70)
+            print("MACD Histogram 계산 (첫 사용 시)")
+            print("="*70)
+            self.macd_histogram = calculate_all_macd(
+                self.closeM,
+                fast_period=12,
+                slow_period=26,
+                signal_period=9,
+                verbose=True
+            )
+            print("="*70)
+
+    def _get_correlation_at_date(self, end_idx: int) -> pd.DataFrame:
+        """특정 시점의 correlation matrix 가져오기 (캐시 사용)"""
+        if end_idx in self._correlation_cache:
+            return self._correlation_cache[end_idx]
+
+        # 캐시에 없으면 계산
+        corr_periods = settings.signals.correlation.periods
+        prices = self.closeM.iloc[:end_idx+1]
+
+        if len(prices) >= corr_periods:
+            correlation = get_corr_matrix(prices, corr_periods)
+        else:
+            # 데이터 부족 시 빈 상관관계 행렬
+            correlation = pd.DataFrame(index=prices.columns, columns=prices.columns)
+            correlation[:] = np.nan
+
+        # 캐시에 저장
+        self._correlation_cache[end_idx] = correlation
+
+        return correlation
+
+    def _create_signal_provider(self, needs_macd: bool) -> Callable:
         """
-        캐싱을 사용하는 시그널 제공자 생성
+        Pre-computed 데이터를 사용하는 시그널 제공자 생성
 
         Parameters:
         -----------
@@ -519,23 +717,29 @@ class BacktestRunner:
         Callable
             end_idx를 받아 (momentum, correlation)을 반환하는 함수
         """
+        # MACD가 필요하면 미리 계산
+        if needs_macd:
+            self._ensure_macd_computed()
+
         def signal_provider(end_idx: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
-            cache_key = (end_idx, needs_macd)
+            # Pre-computed 데이터에서 해당 시점 slice
+            date = self.closeM.index[end_idx]
+            tickers = self.closeM.columns
 
-            # 캐시에서 찾기
-            if cache_key in self._signal_cache:
-                return self._signal_cache[cache_key]
+            # Momentum DataFrame 구성 (rows=tickers, cols=indicators)
+            momentum = pd.DataFrame(index=tickers)
+            momentum['13612MR'] = self.mmt_13612MR.loc[date]
+            momentum['RS3'] = self.rs_3.loc[date]
+            momentum['RS6'] = self.rs_6.loc[date]
+            momentum['RS12'] = self.rs_12.loc[date]
 
-            # 캐시에 없으면 계산
-            momentum, correlation = calculate_signals_at_date(
-                self.closeM_log,
-                self.closeM,
-                end_idx,
-                include_macd=needs_macd
-            )
+            if needs_macd and self.macd_histogram is not None:
+                momentum['MACD_Histogram'] = self.macd_histogram.loc[date]
+            else:
+                momentum['MACD_Histogram'] = np.nan
 
-            # 캐시에 저장
-            self._signal_cache[cache_key] = (momentum, correlation)
+            # Correlation matrix 가져오기 (캐시 사용)
+            correlation = self._get_correlation_at_date(end_idx)
 
             return momentum, correlation
 
@@ -560,8 +764,8 @@ class BacktestRunner:
         print(f"{name.upper()} 백테스트")
         print("="*70)
 
-        # 캐싱된 시그널 제공자 생성
-        signal_provider = self._create_cached_signal_provider(needs_macd)
+        # Pre-computed 데이터를 사용하는 시그널 제공자 생성
+        signal_provider = self._create_signal_provider(needs_macd)
 
         inverse_prices = self.inverse_etf_prices if use_inverse else None
         values, returns, holdings = run_backtest(
@@ -1086,6 +1290,16 @@ def apply_filters(
     step3_count = max(1, int(len(marginal_means) * correlation_ratio))
     step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
 
+    # DEBUG: 필터링 결과 출력 (첫 번째 호출 시에만)
+    if not hasattr(apply_filters, '_debug_printed'):
+        print(f"\n[DEBUG] 필터링 단계별 종목 수:")
+        print(f"  전체: {total_stocks}개")
+        print(f"  Step 1 (모멘텀 {momentum_ratio:.1%}): {len(step1_tickers)}개")
+        print(f"  Step 2 (R² {rsquared_ratio:.1%}): {len(step2_tickers)}개")
+        print(f"  Step 3 (상관 {correlation_ratio:.1%}): {len(step3_tickers)}개")
+        print(f"  계산식: {total_stocks} × {momentum_ratio} × {rsquared_ratio} × {correlation_ratio} = {total_stocks * momentum_ratio * rsquared_ratio * correlation_ratio:.1f}\n")
+        apply_filters._debug_printed = True
+
     return step3_tickers
 
 
@@ -1120,25 +1334,49 @@ def build_portfolio(
     n_stocks = len(tickers)
     equal_weight = 1.0 / n_stocks if n_stocks > 0 else 0
 
-    portfolio = {}
-    inverse_weight = 0.0
+    # 벡터 연산으로 필터링
+    mom_values = momentum.loc[tickers, '13612MR']
 
-    for ticker in tickers:
-        avg_mom = momentum.loc[ticker, '13612MR']
+    if use_macd_filter:
+        # MACD 필터 적용 (벡터 연산)
+        macd_values = momentum.loc[tickers, 'MACD_Histogram']
+        # 13612MR >= 0 AND MACD_Histogram >= 0
+        valid_mask = (mom_values >= 0) & (macd_values >= 0)
+        valid_tickers = mom_values[valid_mask].index.tolist()
+        portfolio = {ticker: equal_weight for ticker in valid_tickers}
+        inverse_weight = 0.0
 
-        # MACD 필터 체크
-        if use_macd_filter:
-            # 표준 MACD Histogram 사용 (MACD Line - Signal Line)
-            macd_hist = momentum.loc[ticker, 'MACD_Histogram']
-            if avg_mom < 0 or macd_hist < 0:
-                continue  # 현금 보유
+        # DEBUG
+        if not hasattr(build_portfolio, '_debug_printed'):
+            print(f"[DEBUG] 포트폴리오 필터링:")
+            print(f"  선택된 종목: {n_stocks}개")
+            print(f"  MACD+모멘텀 필터 통과: {len(valid_tickers)}개")
+            print(f"  투자 비중: {len(valid_tickers) * equal_weight:.1%}\n")
+            build_portfolio._debug_printed = True
 
-        # 기본 필터 (13612MR >= 0)
-        if avg_mom >= 0:
-            portfolio[ticker] = equal_weight
-        elif use_inverse:
-            # 음수 모멘텀 시 인버스 비중 누적
-            inverse_weight += equal_weight / 4
+    else:
+        # 기본 필터만 적용
+        positive_mask = mom_values >= 0
+        negative_mask = mom_values < 0
+
+        # 양수 모멘텀: 투자
+        valid_tickers = mom_values[positive_mask].index.tolist()
+        portfolio = {ticker: equal_weight for ticker in valid_tickers}
+
+        # 음수 모멘텀: 인버스 또는 현금
+        inverse_weight = 0.0
+        if use_inverse:
+            n_negative = negative_mask.sum()
+            inverse_weight = (equal_weight / 4) * n_negative
+
+        # DEBUG
+        if not hasattr(build_portfolio, '_debug_printed'):
+            print(f"[DEBUG] 포트폴리오 필터링:")
+            print(f"  선택된 종목: {n_stocks}개")
+            print(f"  모멘텀 >= 0: {len(valid_tickers)}개")
+            print(f"  모멘텀 < 0: {negative_mask.sum()}개")
+            print(f"  투자 비중: {len(valid_tickers) * equal_weight:.1%}\n")
+            build_portfolio._debug_printed = True
 
     # 인버스 가중치 추가
     if inverse_weight > 0 and use_inverse:

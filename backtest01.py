@@ -179,11 +179,6 @@ def main():
     closeM = import_dataframe_from_json(f'{price_dir}/closeM.json')
     closeM.index = pd.to_datetime(closeM.index)
 
-    # 전체 기간 동안 NaN이 없는 종목만 선택 (최대 300개)
-    closeM_complete = closeM.dropna(axis=1, how='any')
-    n_stocks = min(300, len(closeM_complete.columns))
-    closeM = closeM_complete.iloc[:, :n_stocks]
-
     print(f"      데이터 기간: {closeM.index[0]} ~ {closeM.index[-1]}")
     print(f"      종목 수: {len(closeM.columns)}개")
     print(f"      총 {len(closeM)}개월")
