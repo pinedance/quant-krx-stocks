@@ -31,6 +31,8 @@ class SelectionConfig:
         R-squared 상위 비율
     correlation_ratio : float
         Correlation 하위 비율 (낮을수록 분산 효과)
+    use_macd_filter : bool
+        MACD 오실레이터 필터 사용 여부
     description : str
         전략 설명
     """
@@ -38,26 +40,20 @@ class SelectionConfig:
     momentum_ratio: float
     rsquared_ratio: float
     correlation_ratio: float
+    use_macd_filter: bool = False
     description: str = ""
 
 
 # 전략 설정 정의
 SELECTION_STRATEGIES = [
     SelectionConfig(
-        name="strategy1",
+        name="S234MACD",   #S234MACD
         momentum_ratio=1/2,
-        rsquared_ratio=1/2,
-        correlation_ratio=1/3,
-        description="Base - 모멘텀 1/2 | R² 1/2 | 상관관계 1/3"
+        rsquared_ratio=1/3,
+        correlation_ratio=1/4,
+        use_macd_filter=True,
+        description="S234MACD - 모멘텀 1/2 | R² 1/3 | 상관관계 1/4 | MACD 필터"
     ),
-    # 추가 전략 정의 예시:
-    # SelectionConfig(
-    #     name="strategy2",
-    #     momentum_ratio=0.5,
-    #     rsquared_ratio=0.33,
-    #     correlation_ratio=0.25,
-    #     description="Quality Focus - R² 강화"
-    # ),
 ]
 
 
@@ -240,18 +236,23 @@ def select_stocks_strategy1(momentum, correlation, tickers_info):
     return selector(momentum, correlation, tickers_info)
 
 
-def construct_portfolio(selected_stocks):
+def construct_portfolio(selected_stocks, momentum=None, use_macd_filter=False):
     """
     포트폴리오 구성 (동일 비중, 음수 모멘텀은 현금)
 
     전략:
     - 기본: 동일 비중 (1/N)
     - 평균 모멘텀 < 0: 해당 비중만큼 현금 보유
+    - MACD 필터: MACD Histogram < 0인 경우도 현금 보유
 
     Parameters:
     -----------
     selected_stocks : pd.DataFrame
         선택된 종목 리스트 (Ticker index, Name, avg_momentum 포함)
+    momentum : pd.DataFrame, optional
+        모멘텀 데이터 (MACD_Histogram 컬럼 포함, MACD 필터 사용 시 필요)
+    use_macd_filter : bool
+        MACD 오실레이터 필터 사용 여부
 
     Returns:
     --------
@@ -266,7 +267,20 @@ def construct_portfolio(selected_stocks):
     for ticker in selected_stocks.index:
         avg_momentum = selected_stocks.loc[ticker, 'avg_momentum']
         name = selected_stocks.loc[ticker, 'Name']
+
+        # Ticker에서 'S' prefix 제거하여 실제 종목코드 추출
+        ticker_code = ticker[1:] if ticker.startswith('S') else ticker
+
+        # 기본 필터: 평균 모멘텀 체크
         weight = equal_weight if avg_momentum >= 0 else 0.0
+
+        # MACD 필터 적용
+        if use_macd_filter and weight > 0 and momentum is not None:
+            if ticker_code in momentum.index:
+                macd_hist = momentum.loc[ticker_code, 'MACD_Histogram']
+                if pd.notna(macd_hist) and macd_hist < 0:
+                    weight = 0.0
+
         weights.append({
             'Ticker': ticker,  # 이미 'S' prefix 포함
             'Name': name,
@@ -307,7 +321,10 @@ def main():
     list_dir = settings.output.list_dir.path
     signal_dir = settings.output.signal_dir.path
     portfolio_base_dir = settings.output.portfolio_dir.path
-    strategy_name = "strategy1"  # 전략 1
+
+    # 전략 설정
+    config = SELECTION_STRATEGIES[0]  # S02MACD
+    strategy_name = config.name
     output_dir = f"{portfolio_base_dir}/{strategy_name}"
 
     # 1. 종목 리스트 및 Signal 데이터 로드
@@ -319,13 +336,14 @@ def main():
     print(f"      Momentum: {momentum.shape}")
     print(f"      Correlation: {correlation.shape}")
 
-    # 2. 종목 선택 (전략 1)
-    print_progress(2, 3, "종목 선택 (전략 1)...")
-    selected = select_stocks_strategy1(momentum, correlation, tickers_info)
+    # 2. 종목 선택 (S02MACD 전략)
+    print_progress(2, 3, f"종목 선택 ({config.description})...")
+    selector = create_selection_strategy(config)
+    selected = selector(momentum, correlation, tickers_info)
 
     # 3. 포트폴리오 구성
     print_progress(3, 3, "포트폴리오 구성...")
-    portfolio = construct_portfolio(selected)
+    portfolio = construct_portfolio(selected, momentum, config.use_macd_filter)
 
     # 4. 저장
     print(f"\n파일 저장 (HTML, TSV, JSON) → {output_dir}/...")

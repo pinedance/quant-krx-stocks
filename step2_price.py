@@ -88,9 +88,10 @@ def main():
     min_periods = 1 + settings.stocks.price.min_periods + 1
 
     # 처음 min_periods 개월 동안 데이터가 완전한 종목만 선택 (최근 상장 종목 제외)
-    _closeM_filtered = _closeM.iloc[:min_periods].dropna(axis=1, how='any')
+    _closeM_filtered = _closeM.iloc[(-1*min_periods):].dropna(axis=1, how='any')
 
     # ticker 개수를 n_universe로 조정
+    print(f"      목표 종목 개수: {n_universe}, 최소 데이터 충족 종목 개수: {len(_closeM_filtered.columns)}")
     n_universe_updated = min(len(_closeM_filtered.columns), n_universe)
     selected_tickers = _closeM_filtered.columns[:n_universe_updated]
 

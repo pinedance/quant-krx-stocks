@@ -75,58 +75,67 @@ SUBDIR = "backtest01"  # 현재 자기 자신 python file name
 
 STRATEGIES = [
     StrategyConfig(
-        name="S01",
+        name="S223",
         momentum_ratio=1/2,
         rsquared_ratio=1/2,
         correlation_ratio=1/3,
         description="Base - 모멘텀 1/2 | R² 1/2 | 상관관계 1/3"
     ),
     StrategyConfig(
-        name="S01MACD",
+        name="S223MACD",
         momentum_ratio=1/2,
         rsquared_ratio=1/2,
-        correlation_ratio=1/4,
+        correlation_ratio=1/3,
         use_macd_filter=True,
         description="MACD Filter - Strategy 3 + MACD 오실레이터"
     ),
     # StrategyConfig(
-    #     name="strategy2",
+    #     name="S01INV",
     #     momentum_ratio=1/2,
     #     rsquared_ratio=1/2,
     #     correlation_ratio=1/3,
     #     use_inverse=True,
     #     description="Inverse - Strategy 1 + 인버스 ETF"
     # ),
-    # StrategyConfig(
-    #     name="strategy3",
-    #     momentum_ratio=1/2,
-    #     rsquared_ratio=1/2,
-    #     correlation_ratio=1/4,
-    #     description="★ BEST - 분산 효과 강화 (상관관계 1/4)"
-    # ),
-    # StrategyConfig(
-    #     name="strategy4",
-    #     momentum_ratio=1/3,
-    #     rsquared_ratio=1/3,
-    #     correlation_ratio=1/3,
-    #     description="★ WORST - 엄격한 필터링 (모두 1/3)"
-    # ),
-    # StrategyConfig(
-    #     name="strategy5",
-    #     momentum_ratio=1/2,
-    #     rsquared_ratio=1/3,
-    #     correlation_ratio=1/3,
-    #     description="추세 품질 강화 (R² 1/3)"
-    # ),
     StrategyConfig(
-        name="S02",
+        name="S224",
+        momentum_ratio=1/2,
+        rsquared_ratio=1/2,
+        correlation_ratio=1/4,
+        description="추세 품질 + 분산 효과 강화"
+    ),
+    StrategyConfig(
+        name="S224MACD",
+        momentum_ratio=1/2,
+        rsquared_ratio=1/2,
+        correlation_ratio=1/4,
+        use_macd_filter=True,
+        description="MACD Filter - Strategy 3 + MACD 오실레이터"
+    ),
+    StrategyConfig(
+        name="S233",
+        momentum_ratio=1/2,
+        rsquared_ratio=1/3,
+        correlation_ratio=1/3,
+        description="추세 품질 + 분산 효과 강화"
+    ),
+    StrategyConfig(
+        name="S233MACD",
+        momentum_ratio=1/2,
+        rsquared_ratio=1/3,
+        correlation_ratio=1/3,
+        use_macd_filter=True,
+        description="MACD Filter - Strategy 3 + MACD 오실레이터"
+    ),
+    StrategyConfig(
+        name="S234",
         momentum_ratio=1/2,
         rsquared_ratio=1/3,
         correlation_ratio=1/4,
         description="추세 품질 + 분산 효과 강화"
     ),
     StrategyConfig(
-        name="S02MACD",
+        name="S234MACD",
         momentum_ratio=1/2,
         rsquared_ratio=1/3,
         correlation_ratio=1/4,
@@ -134,14 +143,14 @@ STRATEGIES = [
         description="MACD Filter - Strategy 3 + MACD 오실레이터"
     ),
     StrategyConfig(
-        name="S03",
+        name="S432",
         momentum_ratio=1/4,
         rsquared_ratio=1/3,
         correlation_ratio=1/2,
         description="추세 품질 + 분산 효과 강화"
     ),
     StrategyConfig(
-        name="S03MACD",
+        name="S432MACD",
         momentum_ratio=1/4,
         rsquared_ratio=1/3,
         correlation_ratio=1/2,
