@@ -1,4 +1,4 @@
-name: Deploy KRX300 Analysis to GitHub Pages
+name: Deploy KRX Analysis to GitHub Pages
 
 on:
   # 수동 실행

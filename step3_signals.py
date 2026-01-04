@@ -1,5 +1,5 @@
 """
-STEP 3: KRX300 Signals 생성 및 저장
+STEP 3: KRX Signals 생성 및 저장
 - Momentum, Performance, Correlation 지표 계산
 """
 
@@ -13,7 +13,7 @@ from core.utils import print_step_header, print_progress, print_completion
 
 
 def main():
-    print_step_header(3, "KRX300 Signals 생성 및 저장")
+    print_step_header(3, "KRX Signals 생성 및 저장")
 
     # 설정 로드
     mnt_periods = settings.signals.momentum.periods

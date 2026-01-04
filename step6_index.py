@@ -128,7 +128,7 @@ def main():
     # 인덱스 HTML 생성
     print("\n[2/2] 인덱스 페이지 생성 중...")
     render_data = {
-        'title': 'KRX300 Analysis Results',
+        'title': 'KRX Analysis Results',
         'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'project_name': project_name,
         'n_sections': len(sections),

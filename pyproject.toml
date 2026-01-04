@@ -1,5 +1,5 @@
 [project]
-name = "quant-krx300"
+name = "quant-krx-stocks"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"

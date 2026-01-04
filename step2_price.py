@@ -1,5 +1,5 @@
 """
-STEP 2: KRX300 데이터 생성 및 저장
+STEP 2: KRX 데이터 생성 및 저장
 """
 
 from core.fetcher import get_price
@@ -9,7 +9,7 @@ from core.config import settings
 
 
 def main():
-    print_step_header(2, "KRX300 데이터 생성 및 저장")
+    print_step_header(2, "KRX 데이터 생성 및 저장")
 
     # 설정 로드
     n_universe = settings.stocks.list.n_universe

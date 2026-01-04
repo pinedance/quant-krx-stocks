@@ -755,7 +755,7 @@ def create_vosviewer_json(graph, node_to_cluster, marginal_means, threshold):
             }
         },
         "info": {
-            "title": "KRX300 Correlation Network",
+            "title": "KRX Correlation Network",
             "description": f"Correlation threshold: {threshold}"
         }
     }
@@ -865,7 +865,7 @@ def create_dendrogram_figure(distance_matrix, tickers, method):
     height = max(800, len(tickers) * height_per_item)
 
     fig.update_layout(
-        title="KRX300 Hierarchical Clustering (Correlation-based)",
+        title="KRX Hierarchical Clustering (Correlation-based)",
         width=width,
         height=height,
         xaxis_title="Distance (1 - Correlation)",

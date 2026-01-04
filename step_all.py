@@ -1,5 +1,5 @@
 """
-KRX300 프로젝트 전체 실행 스크립트
+KRX 프로젝트 전체 실행 스크립트
 STEP 1 → STEP 2 → STEP 3 → STEP 4 → STEP 5 → STEP 6을 순차적으로 실행합니다.
 """
 
@@ -63,7 +63,7 @@ def run_step(step_name, script_name):
 
 def main():
     print("\n" + "=" * 70)
-    print("  KRX300 프로젝트 전체 실행")
+    print("  KRX 프로젝트 전체 실행")
     print("=" * 70)
 
     # output 디렉토리 초기화
@@ -71,7 +71,7 @@ def main():
     clean_output_directory()
 
     steps = [
-        ("STEP 1: KRX300 종목 리스트 생성", "step1_list.py"),
+        ("STEP 1: KRX 종목 리스트 생성", "step1_list.py"),
         ("STEP 2: 가격 데이터 생성", "step2_price.py"),
         ("STEP 3: Signals 생성", "step3_signals.py"),
         ("STEP 4: 종목 선택 및 포트폴리오 구성", "step4_selector.py"),

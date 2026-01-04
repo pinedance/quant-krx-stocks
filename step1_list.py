@@ -1,6 +1,6 @@
 """
-STEP 1: KRX300 종목 리스트 생성
-- KRX API에서 KRX300 종목 리스트 가져오기
+STEP 1: KRX 종목 리스트 생성
+- KRX API에서 KRX 종목 리스트 가져오기
 - HTML, TSV, JSON 형식으로 출력
 """
 
@@ -12,7 +12,7 @@ from core.utils import print_step_header, print_completion
 def main():
     print_step_header(1, "종목 리스트 생성")
 
-    # KRX300 종목 리스트 가져오기
+    # KRX 종목 리스트 가져오기
     market = settings.stocks.list.market
 
     print("\n종목 리스트를 가져오는 중...")

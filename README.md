@@ -1,14 +1,14 @@
-# KRX300 Quantitative Analysis
+# KRX Quantitative Analysis
 
-한국거래소 시가총액 상위 300 종목(KRX300)에 대한 퀀트 분석 및 대시보드 생성 프로젝트
+한국거래소 시가총액 상위 300 종목에 대한 퀀트 분석 및 대시보드 생성 프로젝트
 
 ## 프로젝트 개요
 
-국내 주식 시장 추세 파악을 목적으로 KRX300 종목의 모멘텀, 성과, 상관관계를 분석하고 정적 웹 페이지 형태의 대시보드를 생성합니다.
+국내 주식 시장 추세 파악을 목적으로 KRX 종목의 모멘텀, 성과, 상관관계를 분석하고 정적 웹 페이지 형태의 대시보드를 생성합니다.
 
 ## 주요 기능
 
-- KRX300 종목 리스트 자동 수집
+- KRX 종목 리스트 자동 수집
 - 가격 데이터 다운로드 (일별/월별)
 - 모멘텀 지표 계산 (월간 수익률, 회귀 모멘텀)
 - 성과 지표 계산 (Sharpe Ratio, Sortino Ratio)
@@ -30,8 +30,8 @@
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # 프로젝트 클론
-git clone https://github.com/<username>/quant-krx300.git
-cd quant-krx300
+git clone https://github.com/<username>/quant-krx-stocks.git
+cd quant-krx-stocks
 
 # Python 설치 및 의존성 설치
 uv python install
@@ -67,7 +67,7 @@ open output/index.html
 output/
 ├── index.html                    # 메인 페이지 (네비게이션)
 ├── list/
-│   ├── universe.html            # KRX300 종목 리스트
+│   ├── universe.html            # KRX 종목 리스트
 │   ├── universe.tsv
 │   └── universe.json
 ├── price/
@@ -122,7 +122,7 @@ output/
 
 ## 분석 파이프라인
 
-### STEP 1: KRX300 종목 리스트 생성
+### STEP 1: KRX 종목 리스트 생성
 
 `step1_list.py`
 
@@ -195,7 +195,7 @@ output/
 # 데이터 수집 설정
 data:
   market: 'KRX'
-  n_universe: 300              # KRX300
+  n_universe: 300              # KRX
   n_buffer: 100                # 데이터 미달 종목을 염두한 버퍼
   price:
     periods: 63                 # 63개월 데이터 (5년 + 버퍼 3개월)
@@ -260,7 +260,7 @@ project:
 ## 프로젝트 구조
 
 ```
-quant-krx300/
+quant-krx-stocks/
 ├── .github/
 │   └── workflows/
 │       ├── deploy.yml          # GitHub Actions 워크플로우

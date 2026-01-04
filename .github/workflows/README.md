@@ -2,7 +2,7 @@
 
 ## Deploy to GitHub Pages
 
-이 워크플로우는 KRX300 분석을 자동으로 실행하고 결과를 GitHub Pages에 배포합니다.
+이 워크플로우는 KRX 분석을 자동으로 실행하고 결과를 GitHub Pages에 배포합니다.
 
 ### 설정 방법
 
@@ -12,12 +12,12 @@
 
 2. **워크플로우 실행**
    - 자동 실행: 매월 1일 오전 10시 (KST)
-   - 수동 실행: Actions 탭 → "Deploy KRX300 Analysis to GitHub Pages" → "Run workflow"
+   - 수동 실행: Actions 탭 → "Deploy KRX Analysis to GitHub Pages" → "Run workflow"
    - Push 실행: `main` 브랜치에 push 시
 
 3. **결과 확인**
    - URL: `https://<username>.github.io/<repository-name>/`
-   - 예: `https://pinedance.github.io/quant-krx300/`
+   - 예: `https://pinedance.github.io/quant-krx-stocks/`
 
 ### 워크플로우 구조
 
@@ -72,7 +72,7 @@ jobs:
 ### 수동 실행 방법
 
 GitHub Actions 탭에서:
-1. "Deploy KRX300 Analysis to GitHub Pages" 선택
+1. "Deploy KRX Analysis to GitHub Pages" 선택
 2. "Run workflow" 버튼 클릭
 3. 브랜치 선택 (기본: main)
 4. "Run workflow" 실행

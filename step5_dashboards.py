@@ -1,5 +1,5 @@
 """
-STEP 5: KRX300 대시보드 생성
+STEP 5: KRX 대시보드 생성
 - Momentum, Performance, Correlation 대시보드 생성
 """
 
@@ -64,7 +64,7 @@ def create_momentum_dashboard(momentum, performance):
     # HTML 저장
     html_path = f'{dashboard_dir}/momentum.html'
     render_dashboard_html(
-        title="KRX300 Momentum Analysis",
+        title="KRX Momentum Analysis",
         figures=[chart_monthly, chart_regression, chart_quality, chart_strength, chart_reliability],
         chart_ids=['chart1', 'chart2', 'chart3', 'chart4', 'chart5'],
         output_path=html_path
@@ -102,7 +102,7 @@ def create_performance_dashboard(momentum, performance):
     # HTML 저장
     html_path = f'{dashboard_dir}/performance.html'
     render_dashboard_html(
-        title="KRX300 Performance Analysis",
+        title="KRX Performance Analysis",
         figures=[chart_sharpe, chart_sortino, chart_quality_sharpe, chart_quality_sortino],
         chart_ids=['chart1', 'chart2', 'chart3', 'chart4'],
         output_path=html_path
@@ -161,7 +161,7 @@ def create_correlation_network(correlation):
     # VOSviewer 안내 HTML 생성
     html_path = f'{dashboard_dir}/correlation_network.html'
     render_data = {
-        'title': 'KRX300 Correlation Network - VOSviewer',
+        'title': 'KRX Correlation Network - VOSviewer',
         'n_nodes': graph.number_of_nodes(),
         'n_edges': graph.number_of_edges(),
         'n_clusters': n_clusters,
@@ -230,7 +230,7 @@ def create_correlation_cluster(correlation):
     render_html_from_template(
         'correlation_cluster.html',
         {
-            'title': 'KRX300 Correlation Cluster',
+            'title': 'KRX Correlation Cluster',
             'dendrogram_html': fig.to_html(
                 full_html=False,
                 include_plotlyjs=False,
@@ -261,7 +261,7 @@ def create_correlation_cluster(correlation):
 
 def main():
     print("=" * 70)
-    print("STEP 5: KRX300 대시보드 생성")
+    print("STEP 5: KRX 대시보드 생성")
     print("=" * 70)
 
     # 데이터 로드
