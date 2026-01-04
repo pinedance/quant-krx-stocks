@@ -21,7 +21,7 @@ from core.config import settings
 # Signal 계산
 # ============================================================
 
-def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, end_idx: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, end_idx: int, include_macd: bool = True) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     특정 시점까지의 데이터로 momentum과 correlation 계산
 
@@ -33,6 +33,8 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
         가격 데이터
     end_idx : int
         계산할 마지막 인덱스
+    include_macd : bool
+        MACD Histogram 계산 여부 (기본값: True)
 
     Returns:
     --------
@@ -68,11 +70,15 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
             momentum[f'AS{period}'] = np.nan
             momentum[f'RS{period}'] = np.nan
 
-    # MACD Histogram 계산
-    if len(prices) >= 26:  # slow_period
-        macd_hist = calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9)
-        momentum['MACD_Histogram'] = macd_hist.iloc[-1]
+    # MACD Histogram 계산 (필요할 때만)
+    if include_macd:
+        if len(prices) >= 26:  # slow_period
+            macd_hist = calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9)
+            momentum['MACD_Histogram'] = macd_hist.iloc[-1]
+        else:
+            momentum['MACD_Histogram'] = np.nan
     else:
+        # MACD 계산 안 함 (성능 최적화)
         momentum['MACD_Histogram'] = np.nan
 
     # Correlation 계산 (최근 12개월)
@@ -259,7 +265,8 @@ def run_backtest(
     strategy_selector: Callable,
     inverse_etf_prices: Optional[pd.Series] = None,
     end_date: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
+    signal_provider: Optional[Callable] = None
 ) -> Tuple[pd.Series, pd.Series, List[Dict]]:
     """
     백테스트 실행 (일반 전략 및 인버스 전략 지원)
@@ -276,6 +283,9 @@ def run_backtest(
         백테스트 종료일
     verbose : bool
         진행 상황 출력 여부
+    signal_provider : Callable, optional
+        시그널 제공 함수 (end_idx를 받아서 momentum, correlation 반환)
+        None이면 기본 calculate_signals_at_date 사용
 
     Returns:
     --------
@@ -283,6 +293,10 @@ def run_backtest(
         (portfolio_values, monthly_returns, holdings_history)
     """
     closeM_log = np.log(closeM)
+
+    # Signal provider 설정 (없으면 기본 함수 사용)
+    if signal_provider is None:
+        signal_provider = lambda end_idx: calculate_signals_at_date(closeM_log, closeM, end_idx, include_macd=True)
 
     # 최소 12개월 이후부터 백테스트 시작
     start_idx = 12
@@ -321,7 +335,7 @@ def run_backtest(
     for i in range(start_idx, end_idx):
         # t월 종가로 signal 계산
         signal_date = closeM.index[i]
-        momentum, correlation = calculate_signals_at_date(closeM_log, closeM, i)
+        momentum, correlation = signal_provider(i)
 
         # 포트폴리오 선택
         portfolio = strategy_selector(momentum, correlation)
@@ -465,12 +479,14 @@ class BacktestRunner:
             백테스트 종료일
         """
         self.closeM = closeM
+        self.closeM_log = np.log(closeM)
         self.output_dir = output_dir
         self.end_date = end_date
         self.strategies = {}
         self.benchmark_prices = None
         self.benchmark_returns = None
         self.inverse_etf_prices = None
+        self._signal_cache = {}  # 시그널 캐시: (end_idx, needs_macd) -> (momentum, correlation)
 
     def load_benchmark(self, ticker: str = '069500') -> None:
         """벤치마크 ETF 데이터 로드"""
@@ -489,7 +505,43 @@ class BacktestRunner:
         else:
             print(f"      경고: 인버스 ETF 데이터 없음")
 
-    def add_strategy(self, name: str, strategy_selector: Callable, use_inverse: bool = False) -> None:
+    def _create_cached_signal_provider(self, needs_macd: bool) -> Callable:
+        """
+        캐싱을 사용하는 시그널 제공자 생성
+
+        Parameters:
+        -----------
+        needs_macd : bool
+            MACD 계산 필요 여부
+
+        Returns:
+        --------
+        Callable
+            end_idx를 받아 (momentum, correlation)을 반환하는 함수
+        """
+        def signal_provider(end_idx: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+            cache_key = (end_idx, needs_macd)
+
+            # 캐시에서 찾기
+            if cache_key in self._signal_cache:
+                return self._signal_cache[cache_key]
+
+            # 캐시에 없으면 계산
+            momentum, correlation = calculate_signals_at_date(
+                self.closeM_log,
+                self.closeM,
+                end_idx,
+                include_macd=needs_macd
+            )
+
+            # 캐시에 저장
+            self._signal_cache[cache_key] = (momentum, correlation)
+
+            return momentum, correlation
+
+        return signal_provider
+
+    def add_strategy(self, name: str, strategy_selector: Callable, use_inverse: bool = False, needs_macd: bool = False) -> None:
         """
         전략 추가 및 백테스트 실행
 
@@ -501,17 +553,24 @@ class BacktestRunner:
             포트폴리오 선택 함수
         use_inverse : bool
             인버스 ETF 사용 여부
+        needs_macd : bool
+            MACD 계산 필요 여부 (기본값: False, 성능 최적화)
         """
         print(f"\n{'='*70}")
         print(f"{name.upper()} 백테스트")
         print("="*70)
+
+        # 캐싱된 시그널 제공자 생성
+        signal_provider = self._create_cached_signal_provider(needs_macd)
 
         inverse_prices = self.inverse_etf_prices if use_inverse else None
         values, returns, holdings = run_backtest(
             self.closeM,
             strategy_selector,
             inverse_prices,
-            self.end_date
+            self.end_date,
+            verbose=True,
+            signal_provider=signal_provider
         )
 
         # 벤치마크 수익률 정렬

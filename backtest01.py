@@ -195,8 +195,8 @@ def main():
         # Factory 패턴으로 전략 선택 함수 생성
         selector = create_strategy_selector(config)
 
-        # 백테스트 실행
-        runner.add_strategy(config.name, selector, config.use_inverse)
+        # 백테스트 실행 (MACD 필요 여부 전달)
+        runner.add_strategy(config.name, selector, config.use_inverse, config.use_macd_filter)
 
     # 4. 결과 저장 및 출력
     print_progress(4, 4, "결과 저장 중...")
