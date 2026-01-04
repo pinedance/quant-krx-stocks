@@ -8,7 +8,7 @@ import numpy as np
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.finance import annualize_rt, stdev, dsdev, get_corr_matrix
 from core.models import LM
-from core.backtest import calculate_macd
+from core.backtest import calculate_all_macd, calculate_all_momentum
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
 
@@ -33,21 +33,31 @@ def main():
 
     # 2. Momentum 지표 계산
     print_progress(2, 5, "Momentum 지표 계산...")
-    mmtM = pd.DataFrame(index=closeM.columns)
 
+    # Core momentum indicators (13612MR, RS3, RS6, RS12) - 재사용
+    mmt_13612MR_ts, rs_3_ts, rs_6_ts, rs_12_ts = calculate_all_momentum(closeM, closeM_log, verbose=False)
+
+    # 최신 값만 추출
+    mmtM = pd.DataFrame(index=closeM.columns)
+    mmtM['13612MR'] = mmt_13612MR_ts.iloc[-1]
+    mmtM['RS3'] = rs_3_ts.iloc[-1]
+    mmtM['RS6'] = rs_6_ts.iloc[-1]
+    mmtM['RS12'] = rs_12_ts.iloc[-1]
+
+    # 개별 월별 수익률 (1~12MR) 계산
     for i in range(1, 13):
         returns = closeM.pct_change(periods=i).iloc[-1]
         mmtM[f'{i}MR'] = returns
 
-    mmtM['13612MR'] = (mmtM['1MR'] + mmtM['3MR'] + mmtM['6MR'] + mmtM['12MR']) / 4
-
-    # Momentum (with Linear Regression)
+    # Annualized Slope (AS) 및 추가 R² 계산
     # 1~12개월 + mnt_periods (중복 제거 및 정렬)
     all_periods = sorted(set(list(range(1, 13)) + mnt_periods))
     for period in all_periods:
         LR = LM().fit(closeM_log, period)
         mmtM[f'AS{period}'] = (np.exp(LR.slope * 12) - 1)  # 연율화, Monthly
-        mmtM[f'RS{period}'] = LR.score
+        # RS3, RS6, RS12는 이미 계산했으므로 중복 방지
+        if period not in [3, 6, 12]:
+            mmtM[f'RS{period}'] = LR.score
 
     print(f"      완료: {mmtM.shape}")
 
@@ -75,7 +85,7 @@ def main():
 
     # 5. MACD 계산 및 momentum에 추가
     print_progress(5, 5, "MACD 오실레이터 계산...")
-    macdM = calculate_macd(closeM, fast_period=12, slow_period=26, signal_period=9)
+    macdM = calculate_all_macd(closeM, fast_period=12, slow_period=26, signal_period=9, verbose=False)
     # 마지막 행만 추출 (최신 MACD 값) - 행: 날짜, 열: 종목
     macd_latest = macdM.iloc[-1]  # Series: index=종목, value=MACD Histogram
     # momentum DataFrame에 MACD_Histogram 컬럼 추가

@@ -184,6 +184,46 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #555;
         }
+
+        /* Tab Styles */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e1e8ed;
+            margin-bottom: 20px;
+            overflow-x: auto;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: #6c757d;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+            border-bottom: 3px solid transparent;
+        }
+
+        .tab:hover {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 600;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
     </style>
     <title>{{ title }}</title>
 </head>
@@ -228,7 +268,50 @@
                 {% endfor %}
             </div>
             {% endif %}
+
+            <!-- Final Portfolios Section -->
+            {% if portfolio_tabs %}
+            <div class="section">
+                <h2 class="section-title">Final Portfolios (Latest Holdings)</h2>
+                <div class="tabs">
+                    {% for tab in portfolio_tabs %}
+                    <button class="tab{% if loop.first %} active{% endif %}" onclick="switchTab(event, 'portfolio-{{ loop.index0 }}')">
+                        {{ tab.name }}
+                    </button>
+                    {% endfor %}
+                </div>
+                {% for tab in portfolio_tabs %}
+                <div id="portfolio-{{ loop.index0 }}" class="tab-content{% if loop.first %} active{% endif %}">
+                    <div class="table-container">
+                        {{ tab.content|safe }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </div>
     </div>
+
+    <script>
+        function switchTab(evt, tabId) {
+            // Hide all tab contents
+            const tabContents = document.getElementsByClassName('tab-content');
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove('active');
+            }
+
+            // Remove active class from all tabs
+            const tabs = document.getElementsByClassName('tab');
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+            }
+
+            // Show current tab content
+            document.getElementById(tabId).classList.add('active');
+
+            // Add active class to the clicked tab
+            evt.currentTarget.classList.add('active');
+        }
+    </script>
 </body>
 </html>

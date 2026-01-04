@@ -18,6 +18,25 @@ from core.config import settings
 
 
 # ============================================================
+# 상수 정의
+# ============================================================
+
+# 백테스트 설정
+MIN_BACKTEST_MONTHS = 12  # 백테스트 시작 전 필요한 최소 데이터 개월 수
+INVERSE_WEIGHT_RATIO = 0.25  # 인버스 ETF 비중 비율 (1/4)
+MONTHS_PER_YEAR = 12  # 연간 개월 수
+
+# 모멘텀 지표 설정
+MOMENTUM_PERIODS = (1, 3, 6, 12)  # 13612MR 계산에 사용되는 기간
+RSQUARED_PERIODS = (3, 6, 12)  # R² 계산 기간
+
+# MACD 설정
+MACD_FAST_PERIOD = 12  # MACD 단기 EMA 기간
+MACD_SLOW_PERIOD = 26  # MACD 장기 EMA 기간
+MACD_SIGNAL_PERIOD = 9  # MACD Signal Line EMA 기간
+
+
+# ============================================================
 # Signal 계산 (전체 시계열)
 # ============================================================
 
@@ -44,10 +63,10 @@ def calculate_all_momentum(closeM: pd.DataFrame, closeM_log: pd.DataFrame, verbo
         print(f"      모멘텀 지표 계산 중... (벡터 연산)")
 
     # 1. 13612MR 계산 (벡터 연산, lookahead bias 자동 방지)
-    mr_1 = closeM.pct_change(periods=1)
-    mr_3 = closeM.pct_change(periods=3)
-    mr_6 = closeM.pct_change(periods=6)
-    mr_12 = closeM.pct_change(periods=12)
+    mr_1 = closeM.pct_change(periods=MOMENTUM_PERIODS[0])
+    mr_3 = closeM.pct_change(periods=MOMENTUM_PERIODS[1])
+    mr_6 = closeM.pct_change(periods=MOMENTUM_PERIODS[2])
+    mr_12 = closeM.pct_change(periods=MOMENTUM_PERIODS[3])
 
     mmt_13612MR = (mr_1 + mr_3 + mr_6 + mr_12) / 4
 
@@ -63,8 +82,8 @@ def calculate_all_momentum(closeM: pd.DataFrame, closeM_log: pd.DataFrame, verbo
     if verbose:
         print(f"        R² 계산 중... (numpy 벡터 연산)")
 
-    # 각 period별로 rolling R² 계산 (numpy 벡터화)
-    for period, rs_result in [(3, rs_3), (6, rs_6), (12, rs_12)]:
+    # 각 period별로 rolling R² 계산 (완전 벡터화: ticker + 시점)
+    for period, rs_result in zip(RSQUARED_PERIODS, [rs_3, rs_6, rs_12]):
         if len(closeM_log) < period:
             continue
 
@@ -74,39 +93,37 @@ def calculate_all_momentum(closeM: pd.DataFrame, closeM_log: pd.DataFrame, verbo
         x_centered = x - x_mean
         x_var = np.sum(x_centered ** 2)
 
-        # 각 종목별로 계산 (종목별 loop는 유지, 시점별은 벡터화)
-        for ticker in closeM_log.columns:
-            prices = closeM_log[ticker]  # Series로 유지 (index 보존)
-            n = len(prices)
+        # Sliding window 생성: (n_windows, n_tickers, period)
+        from numpy.lib.stride_tricks import sliding_window_view
+        data = closeM_log.values  # (n_dates, n_tickers)
+        windows = sliding_window_view(data, window_shape=period, axis=0)  # (n_dates-period+1, n_tickers, period)
 
-            if n < period:
-                continue
+        # 모든 window와 ticker에 대해 동시에 계산
+        # NaN 경고 억제 (NaN만 있는 window는 자동으로 NaN 결과)
+        import warnings
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', category=RuntimeWarning)
+            # y: (n_windows, n_tickers, period)
+            y_mean = np.nanmean(windows, axis=2, keepdims=True)  # (n_windows, n_tickers, 1)
+            y_centered = windows - y_mean  # (n_windows, n_tickers, period)
 
-            # Rolling window 계산
-            for i in range(period - 1, n):
-                y = prices.iloc[i - period + 1:i + 1].values  # 해당 window의 값만
+            # Slope: (n_windows, n_tickers)
+            numerator = np.nansum(x_centered * y_centered, axis=2)  # (n_windows, n_tickers)
+            slope = numerator / x_var  # (n_windows, n_tickers)
 
-                # NaN 체크
-                if not np.all(np.isfinite(y)):
-                    continue
+            # R² 계산
+            # y_pred: (n_windows, n_tickers, period)
+            y_pred = slope[:, :, np.newaxis] * x + (y_mean - slope[:, :, np.newaxis] * x_mean)
+            ss_res = np.nansum((windows - y_pred) ** 2, axis=2)  # (n_windows, n_tickers)
+            ss_tot = np.nansum(y_centered ** 2, axis=2)  # (n_windows, n_tickers)
 
-                # Linear regression (vectorized)
-                y_mean = np.mean(y)
-                y_centered = y - y_mean
+            # R² = 1 - (ss_res / ss_tot), ss_tot이 0에 가까우면 0으로 처리
+            r2 = 1 - (ss_res / ss_tot)
+            r2 = np.where(ss_tot > 1e-10, r2, np.nan)  # 유효하지 않으면 NaN
 
-                # Slope
-                numerator = np.sum(x_centered * y_centered)
-                slope = numerator / x_var
-
-                # R²
-                y_pred = slope * x + (y_mean - slope * x_mean)
-                ss_res = np.sum((y - y_pred) ** 2)
-                ss_tot = np.sum(y_centered ** 2)
-                r2 = 1 - (ss_res / ss_tot) if ss_tot > 1e-10 else 0
-
-                # i는 prices의 iloc 인덱스, 날짜 인덱스로 저장
-                date_idx = prices.index[i]
-                rs_result.loc[date_idx, ticker] = r2
+        # DataFrame에 저장 (날짜 인덱스 맞춤)
+        result_dates = closeM_log.index[period - 1:]  # period-1부터 시작
+        rs_result.loc[result_dates, :] = r2
 
     if verbose:
         print(f"        ✓ R² 계산 완료")
@@ -117,7 +134,7 @@ def calculate_all_momentum(closeM: pd.DataFrame, closeM_log: pd.DataFrame, verbo
     return mmt_13612MR, rs_3, rs_6, rs_12
 
 
-def calculate_all_macd(closeM: pd.DataFrame, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9, verbose: bool = True) -> pd.DataFrame:
+def calculate_all_macd(closeM: pd.DataFrame, fast_period: int = MACD_FAST_PERIOD, slow_period: int = MACD_SLOW_PERIOD, signal_period: int = MACD_SIGNAL_PERIOD, verbose: bool = True) -> pd.DataFrame:
     """
     전체 시계열의 MACD Histogram 계산 (lookahead bias 방지)
     DataFrame 전체 벡터 연산으로 고속 처리
@@ -206,10 +223,10 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
                            momentum['6MR'] + momentum['12MR']) / 4
 
     # Linear Regression (RS3, RS6, RS12만 계산)
-    for period in [3, 6, 12]:
+    for period in RSQUARED_PERIODS:
         if len(prices_log) >= period:
             LR = LM().fit(prices_log, period)
-            momentum[f'AS{period}'] = (np.exp(LR.slope * 12) - 1)
+            momentum[f'AS{period}'] = (np.exp(LR.slope * MONTHS_PER_YEAR) - 1)
             momentum[f'RS{period}'] = LR.score
         else:
             momentum[f'AS{period}'] = np.nan
@@ -217,8 +234,8 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
 
     # MACD Histogram 계산 (필요할 때만)
     if include_macd:
-        if len(prices) >= 26:  # slow_period
-            macd_hist = calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9)
+        if len(prices) >= MACD_SLOW_PERIOD:
+            macd_hist = calculate_all_macd(prices, fast_period=MACD_FAST_PERIOD, slow_period=MACD_SLOW_PERIOD, signal_period=MACD_SIGNAL_PERIOD, verbose=False)
             momentum['MACD_Histogram'] = macd_hist.iloc[-1]
         else:
             momentum['MACD_Histogram'] = np.nan
@@ -236,56 +253,6 @@ def calculate_signals_at_date(closeM_log: pd.DataFrame, closeM: pd.DataFrame, en
         correlation[:] = np.nan
 
     return momentum, correlation
-
-
-def calculate_macd(closeM: pd.DataFrame, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9) -> pd.DataFrame:
-    """
-    표준 MACD 지표 계산 (MACD Line, Signal Line, MACD Histogram)
-
-    Parameters:
-    -----------
-    closeM : pd.DataFrame
-        월별 종가 데이터 (행: 날짜, 열: 종목)
-    fast_period : int
-        단기 EMA 기간 (기본값: 12개월)
-    slow_period : int
-        장기 EMA 기간 (기본값: 26개월)
-    signal_period : int
-        Signal Line EMA 기간 (기본값: 9개월)
-
-    Returns:
-    --------
-    pd.DataFrame
-        MACD Histogram 값 (행: 날짜, 열: 종목)
-        양수: 상승 모멘텀, 음수: 하락 모멘텀
-    """
-    # 각 종목별로 MACD 계산
-    macd_histogram = pd.DataFrame(index=closeM.index, columns=closeM.columns)
-
-    for ticker in closeM.columns:
-        prices = closeM[ticker].dropna()
-
-        if len(prices) < slow_period:
-            # 데이터가 충분하지 않으면 NaN
-            continue
-
-        # EMA 계산
-        ema_fast = prices.ewm(span=fast_period, adjust=False).mean()
-        ema_slow = prices.ewm(span=slow_period, adjust=False).mean()
-
-        # MACD Line = EMA(12) - EMA(26)
-        macd_line = ema_fast - ema_slow
-
-        # Signal Line = EMA(9) of MACD Line
-        signal_line = macd_line.ewm(span=signal_period, adjust=False).mean()
-
-        # MACD Histogram = MACD Line - Signal Line
-        macd_hist = macd_line - signal_line
-
-        # 결과 저장
-        macd_histogram.loc[prices.index, ticker] = macd_hist
-
-    return macd_histogram
 
 
 # ============================================================
@@ -313,7 +280,7 @@ def calculate_metrics(returns: pd.Series, benchmark_returns: Optional[pd.Series]
     total_return = cumulative_returns.iloc[-1] - 1
 
     # CAGR (Compound Annual Growth Rate)
-    n_years = len(returns) / 12
+    n_years = len(returns) / MONTHS_PER_YEAR
     cagr = (1 + total_return) ** (1 / n_years) - 1 if n_years > 0 else 0
 
     # MDD (Maximum Drawdown)
@@ -322,14 +289,14 @@ def calculate_metrics(returns: pd.Series, benchmark_returns: Optional[pd.Series]
     mdd = drawdown.min()
 
     # Volatility (연율화)
-    volatility = returns.std() * np.sqrt(12)
+    volatility = returns.std() * np.sqrt(MONTHS_PER_YEAR)
 
     # Sharpe Ratio (무위험 수익률 0 가정)
     sharpe = cagr / volatility if volatility > 0 else 0
 
     # Sortino Ratio (하방 편차만 고려)
     downside_returns = returns[returns < 0]
-    downside_std = downside_returns.std() * np.sqrt(12) if len(downside_returns) > 0 else 0
+    downside_std = downside_returns.std() * np.sqrt(MONTHS_PER_YEAR) if len(downside_returns) > 0 else 0
     sortino = cagr / downside_std if downside_std > 0 else 0
 
     # Win Rate
@@ -350,11 +317,11 @@ def calculate_metrics(returns: pd.Series, benchmark_returns: Optional[pd.Series]
     if benchmark_returns is not None:
         # Tracking Error
         excess_returns = returns - benchmark_returns
-        tracking_error = excess_returns.std() * np.sqrt(12)
+        tracking_error = excess_returns.std() * np.sqrt(MONTHS_PER_YEAR)
         metrics['Tracking Error'] = tracking_error
 
         # Information Ratio
-        excess_return = excess_returns.mean() * 12
+        excess_return = excess_returns.mean() * MONTHS_PER_YEAR
         information_ratio = excess_return / tracking_error if tracking_error > 0 else 0
         metrics['Information Ratio'] = information_ratio
 
@@ -444,7 +411,7 @@ def run_backtest(
         signal_provider = lambda end_idx: calculate_signals_at_date(closeM_log, closeM, end_idx, include_macd=True)
 
     # 최소 12개월 이후부터 백테스트 시작
-    start_idx = 12 + 1
+    start_idx = MIN_BACKTEST_MONTHS + 1
 
     # 종료 인덱스 결정
     if end_date is not None:
@@ -477,7 +444,10 @@ def run_backtest(
     portfolio_values.append(1.0)
     monthly_returns.append(0.0)
 
-    for i in range(start_idx, end_idx):
+    # Index 범위 체크: i+1이 유효한 범위 내에 있도록 보장
+    max_idx = min(end_idx, len(closeM) - 1)
+
+    for i in range(start_idx, max_idx):
         # t월 종가로 signal 계산
         signal_date = closeM.index[i]
         momentum, correlation = signal_provider(i)
@@ -523,7 +493,7 @@ def run_backtest(
         })
 
         # 진행 상황 출력
-        if verbose and (i == start_idx or (i - start_idx + 1) % 12 == 0):
+        if verbose and (i == start_idx or (i - start_idx + 1) % MONTHS_PER_YEAR == 1):
             if inverse_weight > 0:
                 print(f"  {signal_date.strftime('%Y-%m')}: 포트폴리오 가치 = {current_value:.4f} "
                       f"({len(stock_portfolio)}개 종목, 인버스 {inverse_weight:.2%})")
@@ -540,10 +510,80 @@ def run_backtest(
 # 결과 저장
 # ============================================================
 
+def _build_final_portfolios(strategies: Dict[str, Dict], tickers_info: pd.DataFrame) -> pd.DataFrame:
+    """
+    전략별 최종 포트폴리오를 하나의 DataFrame으로 구성
+
+    Parameters:
+    -----------
+    strategies : dict
+        전략별 데이터 ({'holdings': list, ...})
+    tickers_info : pd.DataFrame
+        종목 정보 (Code, Name 포함)
+
+    Returns:
+    --------
+    pd.DataFrame
+        Strategy, Ticker, Name, Weight 컬럼을 가진 DataFrame
+    """
+    # 종목 코드 → 이름 매핑
+    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
+
+    all_portfolios = []
+
+    for strategy_name, data in strategies.items():
+        holdings_history = data.get('holdings', [])
+        if len(holdings_history) == 0:
+            # 빈 포트폴리오: Cash 100%
+            all_portfolios.append({
+                'Strategy': strategy_name,
+                'Ticker': 'Cash',
+                'Name': '',
+                'Weight': 1.0
+            })
+            continue
+
+        # 최종(최근) 포트폴리오
+        final_holding = holdings_history[-1]
+        stock_holdings = final_holding.get('holdings', {})
+        inverse_weight = final_holding.get('inverse_weight', 0.0)
+        cash_weight = final_holding.get('cash_weight', 0.0)
+
+        # 주식 종목
+        for ticker, weight in stock_holdings.items():
+            all_portfolios.append({
+                'Strategy': strategy_name,
+                'Ticker': ticker,
+                'Name': ticker_to_name.get(ticker, ''),
+                'Weight': weight
+            })
+
+        # 인버스 ETF
+        if inverse_weight > 0:
+            all_portfolios.append({
+                'Strategy': strategy_name,
+                'Ticker': 'INVERSE',
+                'Name': 'KODEX 인버스',
+                'Weight': inverse_weight
+            })
+
+        # 현금
+        if cash_weight > 0:
+            all_portfolios.append({
+                'Strategy': strategy_name,
+                'Ticker': 'Cash',
+                'Name': '',
+                'Weight': cash_weight
+            })
+
+    return pd.DataFrame(all_portfolios)
+
+
 def save_backtest_results(
     output_dir: str,
     strategies: Dict[str, Dict],
-    benchmark_returns: Optional[pd.Series] = None
+    benchmark_returns: Optional[pd.Series] = None,
+    tickers_info: Optional[pd.DataFrame] = None
 ) -> None:
     """
     백테스트 결과를 파일로 저장
@@ -553,9 +593,11 @@ def save_backtest_results(
     output_dir : str
         저장 디렉토리
     strategies : dict
-        {'strategy_name': {'returns': Series, 'values': Series, 'metrics': dict}}
+        {'strategy_name': {'returns': Series, 'values': Series, 'holdings': list, 'metrics': dict}}
     benchmark_returns : pd.Series, optional
         벤치마크 수익률 (전략과 동일한 기간으로 필터링된 것)
+    tickers_info : pd.DataFrame, optional
+        종목 정보 (Code, Name 포함) - 최종 포트폴리오 저장 시 필요
     """
     # metrics.tsv 생성
     metric_names = ['Total Return', 'CAGR', 'Volatility', 'Sharpe Ratio',
@@ -601,6 +643,14 @@ def save_backtest_results(
     returns_path = f'{output_dir}/monthly_returns.tsv'
     returns_df.to_csv(returns_path, sep='\t')
     print(f"      monthly returns 저장 완료: {returns_path}")
+
+    # 최종 포트폴리오 저장
+    if tickers_info is not None:
+        final_portfolios = _build_final_portfolios(strategies, tickers_info)
+        if final_portfolios is not None and len(final_portfolios) > 0:
+            portfolios_path = f'{output_dir}/final_portfolios.tsv'
+            final_portfolios.to_csv(portfolios_path, sep='\t', index=False)
+            print(f"      final portfolios 저장 완료: {portfolios_path}")
 
 
 # ============================================================
@@ -675,9 +725,9 @@ class BacktestRunner:
             print("="*70)
             self.macd_histogram = calculate_all_macd(
                 self.closeM,
-                fast_period=12,
-                slow_period=26,
-                signal_period=9,
+                fast_period=MACD_FAST_PERIOD,
+                slow_period=MACD_SLOW_PERIOD,
+                signal_period=MACD_SIGNAL_PERIOD,
                 verbose=True
             )
             print("="*70)
@@ -823,11 +873,23 @@ class BacktestRunner:
                 start_series = pd.Series([0.0], index=[strategy_start])
                 filtered_benchmark = pd.concat([start_series, filtered_benchmark])
 
+        # 종목 정보 로드 (최종 포트폴리오 저장용)
+        tickers_info = None
+        try:
+            from core.file import import_dataframe_from_json
+            from core.config import settings
+            market = settings.stocks.list.market
+            list_dir = settings.output.list_dir.path
+            tickers_info = import_dataframe_from_json(f'{list_dir}/{market}.json')
+        except Exception as e:
+            print(f"      경고: 종목 정보 로드 실패 ({e}) - 최종 포트폴리오 종목명 없이 저장")
+
         # 필터링된 benchmark로 저장
         save_backtest_results(
             self.output_dir,
             self.strategies,
-            filtered_benchmark
+            filtered_benchmark,
+            tickers_info
         )
 
         # metrics DataFrame 생성하여 반환
@@ -849,11 +911,17 @@ class BacktestRunner:
         # HTML 리포트 생성
         if generate_report:
             report_path = f'{self.output_dir}/report.html'
+            # 최종 포트폴리오 구성
+            final_portfolios = None
+            if tickers_info is not None:
+                final_portfolios = _build_final_portfolios(self.strategies, tickers_info)
+
             generate_html_report(
                 report_path,
                 metrics_df,
                 self.strategies,
-                filtered_benchmark
+                filtered_benchmark,
+                final_portfolios
             )
 
         return metrics_df
@@ -863,11 +931,175 @@ class BacktestRunner:
 # HTML 리포트 생성
 # ============================================================
 
+# Chart 색상 팔레트
+CHART_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+
+
+def _create_cumulative_returns_chart(strategies: Dict[str, Dict], benchmark_returns: Optional[pd.Series] = None):
+    """누적 수익률 차트 생성"""
+    fig = go.Figure()
+
+    if benchmark_returns is not None and len(benchmark_returns) > 0:
+        benchmark_values = (1 + benchmark_returns).cumprod()
+        fig.add_trace(go.Scatter(
+            x=benchmark_values.index,
+            y=benchmark_values.values,
+            mode='lines',
+            name='Benchmark',
+            line=dict(color='gray', width=2, dash='dash')
+        ))
+
+    for idx, (name, data) in enumerate(strategies.items()):
+        fig.add_trace(go.Scatter(
+            x=data['values'].index,
+            y=data['values'].values,
+            mode='lines',
+            name=name.upper(),
+            line=dict(color=CHART_COLORS[idx % len(CHART_COLORS)], width=2.5)
+        ))
+
+    fig.update_layout(
+        title='Cumulative Returns',
+        xaxis_title='Date',
+        yaxis_title='Portfolio Value',
+        hovermode='x unified',
+        template='plotly_white',
+        height=500
+    )
+    return fig
+
+
+def _create_drawdown_chart(strategies: Dict[str, Dict]):
+    """Drawdown 차트 생성"""
+    fig = go.Figure()
+
+    for idx, (name, data) in enumerate(strategies.items()):
+        values = data['values']
+        cummax = values.cummax()
+        drawdown = (values - cummax) / cummax
+
+        fig.add_trace(go.Scatter(
+            x=drawdown.index,
+            y=drawdown.values * 100,
+            mode='lines',
+            name=name.upper(),
+            line=dict(color=CHART_COLORS[idx % len(CHART_COLORS)], width=2),
+            fill='tozeroy'
+        ))
+
+    fig.update_layout(
+        title='Drawdown (%)',
+        xaxis_title='Date',
+        yaxis_title='Drawdown (%)',
+        hovermode='x unified',
+        template='plotly_white',
+        height=400
+    )
+    return fig
+
+
+def _create_monthly_returns_chart(strategies: Dict[str, Dict], benchmark_returns: Optional[pd.Series] = None):
+    """월별 수익률 차트 생성"""
+    fig = go.Figure()
+
+    if benchmark_returns is not None:
+        fig.add_trace(go.Bar(
+            x=benchmark_returns.index,
+            y=benchmark_returns.values * 100,
+            name='Benchmark',
+            marker_color='lightgray',
+            opacity=0.6
+        ))
+
+    for idx, (name, data) in enumerate(strategies.items()):
+        returns = data['returns']
+        fig.add_trace(go.Scatter(
+            x=returns.index,
+            y=returns.values * 100,
+            mode='lines+markers',
+            name=name.upper(),
+            line=dict(color=CHART_COLORS[idx % len(CHART_COLORS)], width=2),
+            marker=dict(size=4)
+        ))
+
+    fig.update_layout(
+        title='Monthly Returns (%)',
+        xaxis_title='Date',
+        yaxis_title='Return (%)',
+        hovermode='x unified',
+        template='plotly_white',
+        height=400
+    )
+    return fig
+
+
+def _create_annual_returns_chart(strategies: Dict[str, Dict]):
+    """연도별 수익률 차트 생성"""
+    yearly_returns = {}
+    for name, data in strategies.items():
+        returns = data['returns']
+        yearly = returns.groupby(returns.index.year).apply(lambda x: (1 + x).prod() - 1)
+        yearly_returns[name.upper()] = yearly
+
+    fig = go.Figure()
+    for idx, (name, yearly) in enumerate(yearly_returns.items()):
+        fig.add_trace(go.Bar(
+            x=[str(y) for y in yearly.index],
+            y=yearly.values * 100,
+            name=name,
+            marker_color=CHART_COLORS[idx % len(CHART_COLORS)]
+        ))
+
+    fig.update_layout(
+        title='Annual Returns (%)',
+        xaxis_title='Year',
+        yaxis_title='Return (%)',
+        barmode='group',
+        template='plotly_white',
+        height=400
+    )
+    return fig
+
+
+def _create_risk_return_chart(metrics_df: pd.DataFrame, strategies: Dict[str, Dict]):
+    """리스크-수익률 산점도 생성"""
+    fig = go.Figure()
+
+    for col in metrics_df.columns:
+        cagr = metrics_df.loc['CAGR', col] * 100
+        vol = metrics_df.loc['Volatility', col] * 100
+
+        is_benchmark = col == 'benchmark'
+        color = 'gray' if is_benchmark else CHART_COLORS[list(strategies.keys()).index(col) % len(CHART_COLORS)]
+        marker_size = 12 if is_benchmark else 15
+
+        fig.add_trace(go.Scatter(
+            x=[vol],
+            y=[cagr],
+            mode='markers+text',
+            name=col.upper(),
+            text=[col.upper()],
+            textposition='top center',
+            marker=dict(size=marker_size, color=color),
+            showlegend=True
+        ))
+
+    fig.update_layout(
+        title='Risk-Return Profile',
+        xaxis_title='Volatility (% p.a.)',
+        yaxis_title='CAGR (% p.a.)',
+        template='plotly_white',
+        height=500
+    )
+    return fig
+
+
 def generate_html_report(
     output_path: str,
     metrics_df: pd.DataFrame,
     strategies: Dict[str, Dict],
-    benchmark_returns: Optional[pd.Series] = None
+    benchmark_returns: Optional[pd.Series] = None,
+    final_portfolios: Optional[pd.DataFrame] = None
 ) -> None:
     """
     HTML 리포트 생성 (jinja2 템플릿 사용)
@@ -882,164 +1114,26 @@ def generate_html_report(
         전략별 데이터 {'strategy_name': {'returns': Series, 'values': Series}}
     benchmark_returns : pd.Series, optional
         벤치마크 수익률
+    final_portfolios : pd.DataFrame, optional
+        최종 포트폴리오 (Strategy, Ticker, Name, Weight 컬럼)
     """
     from core.renderer import render_html_from_template
     from datetime import datetime
 
     # 1. 누적 수익률 차트
-    fig_cumulative = go.Figure()
-
-    if benchmark_returns is not None and len(benchmark_returns) > 0:
-        # 누적 수익률 계산 (시작일에 0.0이 이미 포함되어 있음)
-        benchmark_values = (1 + benchmark_returns).cumprod()
-        fig_cumulative.add_trace(go.Scatter(
-            x=benchmark_values.index,
-            y=benchmark_values.values,
-            mode='lines',
-            name='Benchmark',
-            line=dict(color='gray', width=2, dash='dash')
-        ))
-
-    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
-    for idx, (name, data) in enumerate(strategies.items()):
-        # portfolio values는 이미 누적된 값 (시작일에 1.0 포함)
-        fig_cumulative.add_trace(go.Scatter(
-            x=data['values'].index,
-            y=data['values'].values,
-            mode='lines',
-            name=name.upper(),
-            line=dict(color=colors[idx % len(colors)], width=2.5)
-        ))
-
-    fig_cumulative.update_layout(
-        title='Cumulative Returns',
-        xaxis_title='Date',
-        yaxis_title='Portfolio Value',
-        hovermode='x unified',
-        template='plotly_white',
-        height=500
-    )
+    fig_cumulative = _create_cumulative_returns_chart(strategies, benchmark_returns)
 
     # 2. Drawdown 차트
-    fig_drawdown = go.Figure()
-
-    for idx, (name, data) in enumerate(strategies.items()):
-        values = data['values']
-        cummax = values.cummax()
-        drawdown = (values - cummax) / cummax
-
-        fig_drawdown.add_trace(go.Scatter(
-            x=drawdown.index,
-            y=drawdown.values * 100,
-            mode='lines',
-            name=name.upper(),
-            line=dict(color=colors[idx % len(colors)], width=2),
-            fill='tozeroy'
-        ))
-
-    fig_drawdown.update_layout(
-        title='Drawdown (%)',
-        xaxis_title='Date',
-        yaxis_title='Drawdown (%)',
-        hovermode='x unified',
-        template='plotly_white',
-        height=400
-    )
+    fig_drawdown = _create_drawdown_chart(strategies)
 
     # 3. 월별 수익률 차트
-    fig_monthly = go.Figure()
-
-    if benchmark_returns is not None:
-        fig_monthly.add_trace(go.Bar(
-            x=benchmark_returns.index,
-            y=benchmark_returns.values * 100,
-            name='Benchmark',
-            marker_color='lightgray',
-            opacity=0.6
-        ))
-
-    for idx, (name, data) in enumerate(strategies.items()):
-        returns = data['returns']
-        fig_monthly.add_trace(go.Scatter(
-            x=returns.index,
-            y=returns.values * 100,
-            mode='lines+markers',
-            name=name.upper(),
-            line=dict(color=colors[idx % len(colors)], width=2),
-            marker=dict(size=4)
-        ))
-
-    fig_monthly.update_layout(
-        title='Monthly Returns (%)',
-        xaxis_title='Date',
-        yaxis_title='Return (%)',
-        hovermode='x unified',
-        template='plotly_white',
-        height=400
-    )
+    fig_monthly = _create_monthly_returns_chart(strategies, benchmark_returns)
 
     # 4. 연도별 수익률 바차트
-    yearly_returns = {}
-    for name, data in strategies.items():
-        returns = data['returns']
-        yearly = returns.groupby(returns.index.year).apply(lambda x: (1 + x).prod() - 1)
-        yearly_returns[name.upper()] = yearly
-
-    fig_yearly = go.Figure()
-    years = sorted(set().union(*[set(yr.index) for yr in yearly_returns.values()]))
-
-    for idx, (name, yearly) in enumerate(yearly_returns.items()):
-        fig_yearly.add_trace(go.Bar(
-            x=[str(y) for y in yearly.index],
-            y=yearly.values * 100,
-            name=name,
-            marker_color=colors[idx % len(colors)]
-        ))
-
-    fig_yearly.update_layout(
-        title='Annual Returns (%)',
-        xaxis_title='Year',
-        yaxis_title='Return (%)',
-        barmode='group',
-        template='plotly_white',
-        height=400
-    )
+    fig_yearly = _create_annual_returns_chart(strategies)
 
     # 5. 리스크-수익률 산점도
-    fig_risk_return = go.Figure()
-
-    risk_return_data = []
-    for name, row in metrics_df.iterrows():
-        if name != 'N Periods':
-            continue
-        break
-
-    for col in metrics_df.columns:
-        cagr = metrics_df.loc['CAGR', col] * 100
-        vol = metrics_df.loc['Volatility', col] * 100
-        sharpe = metrics_df.loc['Sharpe Ratio', col]
-
-        color = 'gray' if col == 'benchmark' else colors[list(strategies.keys()).index(col) % len(colors)]
-        marker_size = 12 if col == 'benchmark' else 15
-
-        fig_risk_return.add_trace(go.Scatter(
-            x=[vol],
-            y=[cagr],
-            mode='markers+text',
-            name=col.upper(),
-            text=[col.upper()],
-            textposition='top center',
-            marker=dict(size=marker_size, color=color),
-            showlegend=True
-        ))
-
-    fig_risk_return.update_layout(
-        title='Risk-Return Profile',
-        xaxis_title='Volatility (% p.a.)',
-        yaxis_title='CAGR (% p.a.)',
-        template='plotly_white',
-        height=500
-    )
+    fig_risk_return = _create_risk_return_chart(metrics_df, strategies)
 
     # Plotly 차트를 HTML로 변환
     figures_html = [
@@ -1071,13 +1165,33 @@ def generate_html_report(
         border=0
     )
 
+    # 최종 포트폴리오 탭별 HTML 생성
+    portfolio_tabs = []
+    if final_portfolios is not None and len(final_portfolios) > 0:
+        for strategy_name in strategies.keys():
+            strategy_portfolio = final_portfolios[final_portfolios['Strategy'] == strategy_name].copy()
+            # Strategy 컬럼 제거하고 HTML 생성
+            strategy_portfolio = strategy_portfolio[['Ticker', 'Name', 'Weight']]
+            # Weight를 퍼센트로 포맷
+            portfolio_html = strategy_portfolio.to_html(
+                classes='table',
+                index=False,
+                border=0,
+                formatters={'Weight': lambda x: f'{x*100:.2f}%'}
+            )
+            portfolio_tabs.append({
+                'name': strategy_name.upper(),
+                'content': portfolio_html
+            })
+
     # 템플릿 렌더링 데이터
     render_data = {
         'title': 'Backtest Report',
         'subtitle': f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
         'metrics_html': metrics_html,
         'monthly_returns_html': monthly_returns_html,
-        'figures': figures_html
+        'figures': figures_html,
+        'portfolio_tabs': portfolio_tabs
     }
 
     # 템플릿을 사용하여 HTML 생성
@@ -1264,22 +1378,22 @@ def apply_filters(
     List[str]
         필터링된 종목 리스트
     """
-    # NaN 제거
-    momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
-    if len(momentum) == 0:
-        return []
+    # NaN 제거 (주석 처리 - step4_selector.py와 일치시키기 위해)
+    # momentum = momentum.dropna(subset=['13612MR', 'RS3', 'RS6', 'RS12'])
+    # if len(momentum) == 0:
+    #     return []
 
     total_stocks = len(momentum)
 
     # Step 1: 평균 모멘텀 필터링
     avg_momentum = calculate_avg_momentum(momentum)
-    step1_count = max(1, int(total_stocks * momentum_ratio))
+    step1_count = int(total_stocks * momentum_ratio)
     step1_tickers = avg_momentum.nlargest(step1_count).index.tolist()
 
     # Step 2: 평균 R-squared 필터링
     avg_rsquared = calculate_avg_rsquared(momentum)
     step2_candidates = avg_rsquared[step1_tickers]
-    step2_count = max(1, int(len(step1_tickers) * rsquared_ratio))
+    step2_count = int(len(step1_tickers) * rsquared_ratio)
     step2_tickers = step2_candidates.nlargest(step2_count).index.tolist()
 
     # Step 3: Marginal mean 필터링
@@ -1287,7 +1401,7 @@ def apply_filters(
     if len(marginal_means) == 0:
         return []
 
-    step3_count = max(1, int(len(marginal_means) * correlation_ratio))
+    step3_count = int(len(marginal_means) * correlation_ratio)
     step3_tickers = marginal_means.nsmallest(step3_count).index.tolist()
 
     return step3_tickers

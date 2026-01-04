@@ -29,8 +29,9 @@ signals:
 
 # 백테스트 설정
 backtest:
-  end_date: 2025-01-31  # 백테스트 종료일 (YYYY-MM-DD 형식, null이면 데이터 끝까지)
-
+  # end_date: 2025-01-31  # 백테스트 종료일 (YYYY-MM-DD 형식, null이면 데이터 끝까지)
+  end_date: null
+  
 # 시각화 설정
 visualization:
   scatter_plot:

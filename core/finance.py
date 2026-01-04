@@ -153,7 +153,7 @@ def get_corr_matrix(prices, periods):
     ncol = len(prices.columns)
 
     # 최근 periods 기간의 수익률 계산
-    returns = prices.pct_change().iloc[-periods:]
+    returns = prices.pct_change(fill_method=None).iloc[-periods:]
 
     # 상관계수 행렬 계산
     corr_matrix = returns.corr()
