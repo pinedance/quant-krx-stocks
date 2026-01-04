@@ -47,7 +47,7 @@ class SelectionConfig:
 # 전략 설정 정의
 SELECTION_STRATEGIES = [
     SelectionConfig(
-        name="S234MACD",   #S234MACD
+        name="main",   #S234MACD
         momentum_ratio=1/2,
         rsquared_ratio=1/3,
         correlation_ratio=1/4,

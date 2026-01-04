@@ -8,9 +8,9 @@ stocks:
     n_universe: 300  # universe 종목 수
     n_buffer: 50     # 데이터 미달 종목을 염두한 버퍼
   price:
-    # periods: 63      # 5년 + 버퍼 3개월    # 몇 개월치 데이터를 가져올지
+    periods: 63      # 5년 + 버퍼 3개월    # 몇 개월치 데이터를 가져올지
     # periods: 123   # 10년 + 버퍼 3개월   # 몇 개월치 데이터를 가져올지
-    periods: 243   # 20년 + 버퍼 3개월   # 몇 개월치 데이터를 가져올지
+    # periods: 243   # 20년 + 버퍼 3개월   # 몇 개월치 데이터를 가져올지
     min_periods: 12     # 최소 충족 데이터 수 (monthly). 충족되지 않는 종목은 drop
     # 위험 종목 제외 여부 (관리종목, 거래정지, 투자주의/경고/위험)
     exclude_risky_stocks: true  # true이면 위험 종목 제외, false이면 모두 포함
@@ -31,7 +31,7 @@ signals:
 backtest:
   # end_date: 2025-01-31  # 백테스트 종료일 (YYYY-MM-DD 형식, null이면 데이터 끝까지)
   end_date: null
-  
+
 # 시각화 설정
 visualization:
   scatter_plot:
