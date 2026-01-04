@@ -9,18 +9,118 @@ import requests
 from typing import Optional, Set
 from core.config import get_config
 
+# ============================================================
+# Constants
+# ============================================================
+
+# Stock list columns (표준 컬럼명)
 STOCK_LIST_COLUMN_NAMES = ["Code", "Name", "Market", "Volume", "Amount", "Marcap", "Stocks"]
 
-def _get_krx_list():
+# ----------------------------------------
+# Naver API 관련 상수
+# ----------------------------------------
+
+# Naver API 엔드포인트 및 헤더
+NAVER_API_URL = "https://stock.naver.com/api/domestic/market/stock/default"
+NAVER_API_REFERER = "https://stock.naver.com/market/stock/kr/stocklist/capitalization"
+NAVER_API_TIMEOUT = 10
+
+# Naver API 요청 파라미터 기본값
+DEFAULT_PAGE_SIZE = 500          # pageSize: 한 번에 가져올 종목 수
+DEFAULT_START_INDEX = 0          # startIdx: 시작 인덱스
+
+# Naver API 요청 파라미터: tradeType (거래 타입)
+TRADE_TYPE_KRX = "KRX"
+
+# Naver API 요청 파라미터: marketType (시장 타입)
+MARKET_TYPE_ALL = "ALL"
+
+# Naver API 요청 파라미터: orderType (정렬 기준)
+ORDER_TYPE_MARKET_SUM = "marketSum"     # 시가총액순
+ORDER_TYPE_STATUS_TAG = "statusTag"     # 관리종목 필터용
+ORDER_TYPE_TRADE_STOP = "tradeStopYn"   # 거래정지 필터용
+ORDER_TYPE_MARKET_ALERT = "marketAlertType"  # 투자경고 필터용
+
+# Naver API 요청 파라미터: alertType (투자경고 타입)
+ALERT_TYPE_CAUTION = "01"  # 투자주의
+ALERT_TYPE_WARNING = "02"  # 투자경고
+ALERT_TYPE_RISK = "03"     # 투자위험
+
+# Naver API 응답 데이터: sosok 필드 값 (시장 구분 코드)
+MARKET_KOSPI_CODE = "0"    # KOSPI 시장
+MARKET_KOSDAQ_CODE = "1"   # KOSDAQ 시장
+
+# ----------------------------------------
+# 데이터 변환 관련 상수
+# ----------------------------------------
+
+# 시장 이름 매핑 (Naver API sosok -> 표준 Market 컬럼)
+MARKET_KOSPI_NAME = "KOSPI"
+MARKET_KOSDAQ_NAME = "KOSDAQ"
+
+# 숫자형 변환 대상 컬럼 (KRX/FinanceDataReader 데이터)
+NUMERIC_COLUMNS_BASIC = ['Volume', 'Amount', 'Marcap', 'Stocks']
+
+# 숫자형 변환 대상 컬럼 (Naver API 데이터)
+NUMERIC_COLUMNS_NAVER = [
+    'accQuant', 'accAmount', 'marketSum', 'listedStockCnt',
+    'propertyTotal', 'debtTotal', 'sales', 'salesIncreasingRate',
+    'operatingProfit', 'operatingProfitIncreasingRate', 'netIncome',
+    'eps', 'per', 'pbr', 'roe', 'roa', 'dividend', 'reserveRatio'
+]
+
+# ----------------------------------------
+# 가격 데이터 다운로드 관련 상수
+# ----------------------------------------
+
+# FinanceDataReader 다운로드 방식
+DOWNLOAD_METHOD_BATCH = "batch"          # 일괄 다운로드 (콤마로 연결)
+DOWNLOAD_METHOD_PARALLEL = "parallel"    # 병렬 다운로드
+DOWNLOAD_METHOD_SEQUENTIAL = "sequential"  # 순차 다운로드
+
+# 다운로드 방식 결정 기준
+BATCH_THRESHOLD = 10  # ticker 개수가 이 값 이하면 batch 모드 자동 적용
+
+# 병렬 처리 설정
+DEFAULT_MAX_WORKERS = 4  # ThreadPoolExecutor 기본 worker 수 (CPU count 사용 불가 시)
+
+# ============================================================
+# Helper Functions (공통 유틸리티)
+# ============================================================
+
+def _convert_columns_to_numeric(df: pd.DataFrame, columns: list) -> pd.DataFrame:
+    """
+    DataFrame의 지정된 컬럼들을 숫자형으로 변환합니다.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        변환할 DataFrame
+    columns : list
+        숫자형으로 변환할 컬럼 리스트
+
+    Returns:
+    --------
+    pd.DataFrame
+        변환된 DataFrame
+    """
+    for col in columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+    return df
+
+
+# ============================================================
+# Stock List Functions - KRX
+# ============================================================
+
+def _krx_get_list():
     """KRX 전체 종목 리스트를 가져옵니다 (FinanceDataReader 사용)"""
     cols = ["Code", "ISU_CD", "Name", "Market", "Volume", "Amount", "Marcap", "Stocks", "MarketId"]
     df = fdr.StockListing("KRX")[cols]
 
     # 숫자형 컬럼 변환 (문자열 -> float)
-    numeric_columns = ['Volume', 'Amount', 'Marcap', 'Stocks']
-    for col in numeric_columns:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = _convert_columns_to_numeric(df, NUMERIC_COLUMNS_BASIC)
 
     # STOCK_LIST_COLUMN_NAMES에 맞춰 컬럼 선택 및 정렬
     df = df[STOCK_LIST_COLUMN_NAMES].sort_values(by='Marcap', ascending=False, ignore_index=True)
@@ -28,12 +128,16 @@ def _get_krx_list():
     return df
 
 
-def _get_naver_stock_data(
-    trade_type: str = "KRX",
-    market_type: str = "ALL",
-    order_type: str = "marketSum",
-    start_idx: int = 0,
-    page_size: int = 500,
+# ============================================================
+# Stock List Functions - Naver
+# ============================================================
+
+def _naver_fetch_stock_data(
+    trade_type: str = TRADE_TYPE_KRX,
+    market_type: str = MARKET_TYPE_ALL,
+    order_type: str = ORDER_TYPE_MARKET_SUM,
+    start_idx: int = DEFAULT_START_INDEX,
+    page_size: int = DEFAULT_PAGE_SIZE,
     alert_type: Optional[str] = None
 ) -> Optional[pd.DataFrame]:
     """
@@ -50,8 +154,6 @@ def _get_naver_stock_data(
     Returns:
         pd.DataFrame 또는 None
     """
-    url = "https://stock.naver.com/api/domestic/market/stock/default"
-
     params = {
         "tradeType": trade_type,
         "marketType": market_type,
@@ -67,12 +169,12 @@ def _get_naver_stock_data(
         "accept": "*/*",
         "accept-encoding": "gzip, deflate, br, zstd",
         "accept-language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-        "referer": "https://stock.naver.com/market/stock/kr/stocklist/capitalization",
+        "referer": NAVER_API_REFERER,
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
     }
 
     try:
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response = requests.get(NAVER_API_URL, params=params, headers=headers, timeout=NAVER_API_TIMEOUT)
         response.raise_for_status()
         data = response.json()
 
@@ -87,7 +189,7 @@ def _get_naver_stock_data(
         return None
 
 
-def _get_special_stocks(order_type: str, alert_type: Optional[str] = None) -> Set[str]:
+def _naver_fetch_special_stocks(order_type: str, alert_type: Optional[str] = None) -> Set[str]:
     """
     특수 종목 코드 집합을 가져옵니다 (내부 함수).
 
@@ -98,27 +200,32 @@ def _get_special_stocks(order_type: str, alert_type: Optional[str] = None) -> Se
     Returns:
         종목 코드 집합
     """
-    df = _get_naver_stock_data(order_type=order_type, alert_type=alert_type)
+    df = _naver_fetch_stock_data(order_type=order_type, alert_type=alert_type)
     if df is not None and 'itemcode' in df.columns:
         return set(df['itemcode'].tolist())
     return set()
 
 
-def _get_naver_list():
-    """네이버 금융 API에서 KRX 종목 리스트를 가져옵니다 (내부 함수)"""
-    # 메인 주식 리스트 가져오기
-    df = _get_naver_stock_data(page_size=500)
+def _naver_add_special_flags(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    특수 종목 플래그를 DataFrame에 추가합니다.
 
-    if df is None or df.empty:
-        print("네이버 API에서 데이터를 가져오는데 실패했습니다.")
-        return pd.DataFrame()
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        주식 데이터
 
+    Returns:
+    --------
+    pd.DataFrame
+        특수 종목 플래그가 추가된 DataFrame
+    """
     # 특수 종목 데이터 가져오기
-    management_stocks = _get_special_stocks("statusTag")
-    trading_halt_stocks = _get_special_stocks("tradeStopYn")
-    investment_caution_stocks = _get_special_stocks("marketAlertType", "01")
-    investment_warning_stocks = _get_special_stocks("marketAlertType", "02")
-    investment_risk_stocks = _get_special_stocks("marketAlertType", "03")
+    management_stocks = _naver_fetch_special_stocks(ORDER_TYPE_STATUS_TAG)
+    trading_halt_stocks = _naver_fetch_special_stocks(ORDER_TYPE_TRADE_STOP)
+    investment_caution_stocks = _naver_fetch_special_stocks(ORDER_TYPE_MARKET_ALERT, ALERT_TYPE_CAUTION)
+    investment_warning_stocks = _naver_fetch_special_stocks(ORDER_TYPE_MARKET_ALERT, ALERT_TYPE_WARNING)
+    investment_risk_stocks = _naver_fetch_special_stocks(ORDER_TYPE_MARKET_ALERT, ALERT_TYPE_RISK)
 
     # Boolean 컬럼 추가
     df['is_management'] = df['itemcode'].isin(management_stocks)
@@ -127,19 +234,31 @@ def _get_naver_list():
     df['is_investment_warning'] = df['itemcode'].isin(investment_warning_stocks)
     df['is_investment_risk'] = df['itemcode'].isin(investment_risk_stocks)
 
+    return df
+
+
+def _naver_transform_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    네이버 API 데이터의 컬럼을 표준 형식으로 변환합니다.
+
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        네이버 API에서 가져온 데이터
+
+    Returns:
+    --------
+    pd.DataFrame
+        컬럼이 변환된 DataFrame
+    """
     # Market 컬럼 생성 (sosok: 0=KOSPI, 1=KOSDAQ)
-    df['Market'] = df['sosok'].astype(str).map({'0': 'KOSPI', '1': 'KOSDAQ'})
+    df['Market'] = df['sosok'].astype(str).map({
+        MARKET_KOSPI_CODE: MARKET_KOSPI_NAME,
+        MARKET_KOSDAQ_CODE: MARKET_KOSDAQ_NAME
+    })
 
     # 숫자형 컬럼 변환 (문자열 -> float)
-    numeric_columns = [
-        'accQuant', 'accAmount', 'marketSum', 'listedStockCnt',
-        'propertyTotal', 'debtTotal', 'sales', 'salesIncreasingRate',
-        'operatingProfit', 'operatingProfitIncreasingRate', 'netIncome',
-        'eps', 'per', 'pbr', 'roe', 'roa', 'dividend', 'reserveRatio'
-    ]
-    for col in numeric_columns:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+    df = _convert_columns_to_numeric(df, NUMERIC_COLUMNS_NAVER)
 
     # 컬럼 이름 매핑 (한글)
     column_mapping = {
@@ -205,6 +324,28 @@ def _get_naver_list():
     return df
 
 
+def _naver_get_list():
+    """네이버 금융 API에서 KRX 종목 리스트를 가져옵니다 (내부 함수)"""
+    # 메인 주식 리스트 가져오기
+    df = _naver_fetch_stock_data(page_size=DEFAULT_PAGE_SIZE)
+
+    if df is None or df.empty:
+        print("네이버 API에서 데이터를 가져오는데 실패했습니다.")
+        return pd.DataFrame()
+
+    # 특수 종목 플래그 추가
+    df = _naver_add_special_flags(df)
+
+    # 컬럼 변환 및 정렬
+    df = _naver_transform_columns(df)
+
+    return df
+
+
+# ============================================================
+# Stock List Functions - Public Interface
+# ============================================================
+
 def get_list(market="KRX", list_source=None):
     """
     지수 구성 종목 리스트를 가져옵니다.
@@ -231,16 +372,20 @@ def get_list(market="KRX", list_source=None):
     print(f"데이터 소스: {list_source}")
 
     if list_source == 'Naver':
-        df = _get_naver_list()
+        df = _naver_get_list()
     elif list_source == 'KRX':
-        df = _get_krx_list()
+        df = _krx_get_list()
     else:
         raise ValueError(f"Unsupported list_source: {list_source}")
 
     return df
 
 
-def _download_single_ticker(ticker, start_date, end_date, data_source=None):
+# ============================================================
+# Stock Price Functions
+# ============================================================
+
+def _price_download_single_ticker(ticker, start_date, end_date, data_source=None):
     """
     단일 종목 다운로드 (병렬 처리용 내부 함수)
 
@@ -301,12 +446,12 @@ def get_price(tickers, start_date=None, end_date=None):
         end_date = datetime.now().strftime('%Y-%m-%d')
 
     # 설정 로드
-    download_method = get_config('stocks.price.download_method', "parallel")
+    download_method = get_config('stocks.price.download_method', DOWNLOAD_METHOD_PARALLEL)
     data_source = get_config('stocks.price.download_source', None)
-    max_workers = os.cpu_count() or 4  # fallback to 4
+    max_workers = os.cpu_count() or DEFAULT_MAX_WORKERS
 
     # 배치 다운로드 모드
-    if (download_method == "batch") or (download_method == "parallel" and len(tickers) <= 10):
+    if (download_method == DOWNLOAD_METHOD_BATCH) or (download_method == DOWNLOAD_METHOD_PARALLEL and len(tickers) <= BATCH_THRESHOLD):
         print("      배치 다운로드 모드")
         tickers_str = ",".join(tickers)
         df = fdr.DataReader(tickers_str, start_date, end_date)
@@ -322,11 +467,11 @@ def get_price(tickers, start_date=None, end_date=None):
     price_data = {}
 
     # 병렬 다운로드 모드
-    if download_method == "parallel" and len(tickers) > 10:
+    if download_method == DOWNLOAD_METHOD_PARALLEL and len(tickers) > BATCH_THRESHOLD:
         print(f"      병렬 다운로드 모드 (workers={max_workers})")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(_download_single_ticker, ticker, start_date, end_date, data_source): ticker
+                executor.submit(_price_download_single_ticker, ticker, start_date, end_date, data_source): ticker
                 for ticker in tickers
             }
             for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading"):
@@ -339,7 +484,7 @@ def get_price(tickers, start_date=None, end_date=None):
         print("      순차 다운로드 모드")
         for ticker in tqdm(tickers, desc="Downloading"):
             try:
-                ticker, df = _download_single_ticker(ticker, start_date, end_date, data_source)
+                ticker, df = _price_download_single_ticker(ticker, start_date, end_date, data_source)
                 if df:
                     price_data[ticker] = df
             except Exception:
