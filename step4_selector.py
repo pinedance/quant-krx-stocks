@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
-from core.backtest import calculate_avg_momentum, calculate_avg_rsquared, calculate_marginal_means
+from core.backtest import calculate_avg_momentum, calculate_avg_rsquared, calculate_marginal_means, calculate_signals_at_date
+import numpy as np
 
 
 # ============================================================
@@ -236,7 +237,7 @@ def select_stocks_strategy1(momentum, correlation, tickers_info):
     return selector(momentum, correlation, tickers_info)
 
 
-def construct_portfolio(selected_stocks, momentum=None, use_macd_filter=False):
+def construct_portfolio(selected_stocks, momentum=None, use_macd_filter=False, verbose=True):
     """
     포트폴리오 구성 (동일 비중, 음수 모멘텀은 현금)
 
@@ -253,6 +254,8 @@ def construct_portfolio(selected_stocks, momentum=None, use_macd_filter=False):
         모멘텀 데이터 (MACD_Histogram 컬럼 포함, MACD 필터 사용 시 필요)
     use_macd_filter : bool
         MACD 오실레이터 필터 사용 여부
+    verbose : bool
+        요약 정보 출력 여부
 
     Returns:
     --------
@@ -306,11 +309,88 @@ def construct_portfolio(selected_stocks, momentum=None, use_macd_filter=False):
     portfolio = pd.concat([portfolio, cash_row])
 
     # 요약 정보
-    n_invested = (portfolio['Weight'] > 0).sum() - 1  # Cash 제외
-    print(f"      투자 종목: {n_invested}개 ({total_invested:.1%})")
-    print(f"      현금 보유: {cash_weight:.1%}")
+    if verbose:
+        n_invested = (portfolio['Weight'] > 0).sum() - 1  # Cash 제외
+        print(f"      투자 종목: {n_invested}개 ({total_invested:.1%})")
+        print(f"      현금 보유: {cash_weight:.1%}")
 
     return portfolio
+
+
+def calculate_portfolio_comparison(portfolio_current, portfolio_1m_ago):
+    """
+    현재 포트폴리오와 1달 전 포트폴리오 비교
+
+    Parameters:
+    -----------
+    portfolio_current : pd.DataFrame
+        현재 포트폴리오 (Ticker, Name, Weight 컬럼)
+    portfolio_1m_ago : pd.DataFrame
+        1달 전 포트폴리오 (Ticker, Name, Weight 컬럼)
+
+    Returns:
+    --------
+    pd.DataFrame
+        비교 리포트 (Ticker, Name, Weight_current, Weight_1m_ago, Weight_change, Status 컬럼)
+    """
+    # Cash 제외
+    current_stocks = portfolio_current[portfolio_current['Ticker'] != 'Cash'].copy()
+    prev_stocks = portfolio_1m_ago[portfolio_1m_ago['Ticker'] != 'Cash'].copy()
+
+    # Ticker를 기준으로 merge (outer join)
+    current_stocks = current_stocks.set_index('Ticker')
+    prev_stocks = prev_stocks.set_index('Ticker')
+
+    comparison = pd.DataFrame(index=sorted(set(current_stocks.index) | set(prev_stocks.index)))
+    comparison['Name'] = current_stocks['Name'].combine_first(prev_stocks['Name'])
+    comparison['Weight_current'] = current_stocks['Weight'].reindex(comparison.index).fillna(0.0)
+    comparison['Weight_1m_ago'] = prev_stocks['Weight'].reindex(comparison.index).fillna(0.0)
+    comparison['Weight_change'] = comparison['Weight_current'] - comparison['Weight_1m_ago']
+
+    # Status 계산
+    def get_status(row):
+        if row['Weight_1m_ago'] == 0 and row['Weight_current'] > 0:
+            return 'New'
+        elif row['Weight_1m_ago'] > 0 and row['Weight_current'] == 0:
+            return 'Removed'
+        elif row['Weight_1m_ago'] == 0 and row['Weight_current'] == 0:
+            return 'N/A'
+        elif abs(row['Weight_change']) < 1e-6:
+            return 'Unchanged'
+        else:
+            return 'Rebalanced'
+
+    comparison['Status'] = comparison.apply(get_status, axis=1)
+
+    # N/A 제외 및 정렬 (Status 우선, Ticker 차순)
+    comparison = comparison[comparison['Status'] != 'N/A']
+    status_order = {'New': 1, 'Removed': 2, 'Rebalanced': 3, 'Unchanged': 4}
+    comparison['_sort_key'] = comparison['Status'].map(status_order)
+    comparison = comparison.sort_values(by='_sort_key')
+    comparison = comparison.sort_index()  # Ticker(index) 기준 2차 정렬
+    comparison = comparison.drop(columns=['_sort_key'])
+
+    # index를 Ticker 컬럼으로 복원
+    comparison = comparison.reset_index()
+    comparison = comparison.rename(columns={'index': 'Ticker'})
+
+    # Cash 행 추가
+    cash_current = portfolio_current[portfolio_current['Ticker'] == 'Cash']['Weight'].values[0]
+    cash_1m_ago = portfolio_1m_ago[portfolio_1m_ago['Ticker'] == 'Cash']['Weight'].values[0]
+    cash_change = cash_current - cash_1m_ago
+
+    cash_row = pd.DataFrame([{
+        'Ticker': 'Cash',
+        'Name': '',
+        'Weight_current': cash_current,
+        'Weight_1m_ago': cash_1m_ago,
+        'Weight_change': cash_change,
+        'Status': 'Cash'
+    }])
+
+    comparison = pd.concat([comparison, cash_row], ignore_index=True)
+
+    return comparison
 
 
 def main():
@@ -319,40 +399,89 @@ def main():
     # 설정 로드
     market = settings.stocks.list.market
     list_dir = settings.output.list_dir.path
+    price_dir = settings.output.price_dir.path
     signal_dir = settings.output.signal_dir.path
     portfolio_base_dir = settings.output.portfolio_dir.path
 
     # 전략 설정
-    config = SELECTION_STRATEGIES[0]  # S02MACD
+    config = SELECTION_STRATEGIES[0]  # main (S234MACD)
     strategy_name = config.name
     output_dir = f"{portfolio_base_dir}/{strategy_name}"
 
-    # 1. 종목 리스트 및 Signal 데이터 로드
-    print_progress(1, 3, "데이터 로드...")
+    # 1. 데이터 로드
+    print_progress(1, 5, "데이터 로드...")
     tickers_info = import_dataframe_from_json(f'{list_dir}/{market}.json')
-    momentum = import_dataframe_from_json(f'{signal_dir}/momentum.json')
-    correlation = import_dataframe_from_json(f'{signal_dir}/correlation.json')
+    closeM = import_dataframe_from_json(f'{price_dir}/closeM.json')
+    closeM.index = pd.to_datetime(closeM.index)
     print(f"      Tickers: {tickers_info.shape}")
-    print(f"      Momentum: {momentum.shape}")
-    print(f"      Correlation: {correlation.shape}")
+    print(f"      closeM: {closeM.shape}")
 
-    # 2. 종목 선택 (S02MACD 전략)
-    print_progress(2, 3, f"종목 선택 ({config.description})...")
+    # 2. 현재 시점 포트폴리오 (최신 데이터 기준)
+    print_progress(2, 5, f"현재 포트폴리오 계산 ({config.description})...")
+    closeM_log = np.log(closeM)
+    end_idx_current = len(closeM) - 1
+    momentum_current, correlation_current = calculate_signals_at_date(
+        closeM_log, closeM, end_idx_current, include_macd=config.use_macd_filter
+    )
+
     selector = create_selection_strategy(config)
-    selected = selector(momentum, correlation, tickers_info)
+    selected_current = selector(momentum_current, correlation_current, tickers_info)
+    portfolio_current = construct_portfolio(selected_current, momentum_current, config.use_macd_filter, verbose=True)
 
-    # 3. 포트폴리오 구성
-    print_progress(3, 3, "포트폴리오 구성...")
-    portfolio = construct_portfolio(selected, momentum, config.use_macd_filter)
+    # 3. 1달 전 시점 포트폴리오
+    print_progress(3, 5, "1달 전 포트폴리오 계산...")
+    if len(closeM) >= 2:
+        end_idx_1m_ago = len(closeM) - 2
+        momentum_1m_ago, correlation_1m_ago = calculate_signals_at_date(
+            closeM_log, closeM, end_idx_1m_ago, include_macd=config.use_macd_filter
+        )
 
-    # 4. 저장
-    print(f"\n파일 저장 (HTML, TSV, JSON) → {output_dir}/...")
-    export_with_message(selected, f'{output_dir}/selected', 'Selected Stocks')
-    export_with_message(portfolio, f'{output_dir}/portfolio', 'Portfolio Composition')
+        selected_1m_ago = selector(momentum_1m_ago, correlation_1m_ago, tickers_info)
+        portfolio_1m_ago = construct_portfolio(selected_1m_ago, momentum_1m_ago, config.use_macd_filter, verbose=True)
+    else:
+        print("      경고: 데이터 부족으로 1달 전 포트폴리오를 계산할 수 없습니다.")
+        selected_1m_ago = None
+        portfolio_1m_ago = None
+
+    # 4. 포트폴리오 비교
+    print_progress(4, 5, "포트폴리오 비교 리포트 생성...")
+    if portfolio_1m_ago is not None:
+        comparison = calculate_portfolio_comparison(portfolio_current, portfolio_1m_ago)
+
+        # 요약 통계
+        n_new = (comparison['Status'] == 'New').sum()
+        n_removed = (comparison['Status'] == 'Removed').sum()
+        n_rebalanced = (comparison['Status'] == 'Rebalanced').sum()
+        n_unchanged = (comparison['Status'] == 'Unchanged').sum()
+
+        print(f"      신규 편입: {n_new}개")
+        print(f"      제외: {n_removed}개")
+        print(f"      비중 조정: {n_rebalanced}개")
+        print(f"      변동 없음: {n_unchanged}개")
+    else:
+        comparison = None
+
+    # 5. 저장
+    print_progress(5, 5, f"파일 저장 (HTML, TSV, JSON) → {output_dir}/...")
+
+    # 현재 포트폴리오
+    export_with_message(selected_current, f'{output_dir}/selected', 'Selected Stocks (Current)')
+    export_with_message(portfolio_current, f'{output_dir}/portfolio', 'Portfolio Composition (Current)')
+
+    # 1달 전 포트폴리오
+    if selected_1m_ago is not None and portfolio_1m_ago is not None:
+        export_with_message(selected_1m_ago, f'{output_dir}/selected_1m_ago', 'Selected Stocks (1 Month Ago)')
+        export_with_message(portfolio_1m_ago, f'{output_dir}/portfolio_1m_ago', 'Portfolio Composition (1 Month Ago)')
+
+    # 비교 리포트
+    if comparison is not None:
+        export_with_message(comparison, f'{output_dir}/portfolio_comparison', 'Portfolio Comparison (Current vs 1M Ago)')
 
     # DataTables 인터랙티브 버전 추가
-    print(f"\n인터랙티브 테이블 생성 (DataTables)...")
-    export_dataframe_to_datatable(selected, f'{output_dir}/selected', 'Selected Stocks - Interactive Table')
+    print("\n인터랙티브 테이블 생성 (DataTables)...")
+    export_dataframe_to_datatable(selected_current, f'{output_dir}/selected', 'Selected Stocks (Current) - Interactive Table')
+    if comparison is not None:
+        export_dataframe_to_datatable(comparison, f'{output_dir}/portfolio_comparison', 'Portfolio Comparison - Interactive Table')
 
     print_completion(4)
 
