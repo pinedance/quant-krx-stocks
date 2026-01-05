@@ -64,7 +64,8 @@ import numpy as np
 from core.file import import_dataframe_from_json
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion, ensure_directory
-from core.backtest import BacktestRunner, StrategyConfig, create_strategy_selector
+from core.backtest_runner import BacktestRunner
+from core.strategy import StrategyConfig, create_strategy_selector
 
 SUBDIR = "backtest01"  # 현재 자기 자신 python file name
 

@@ -131,7 +131,7 @@ def dsdev(prices, periods):
         raise ValueError("prices must be DataFrame or Series")
 
 
-def get_corr_matrix(prices, periods):
+def calculate_corr_matrix(prices, periods):
     """
     상관계수 행렬 계산
 
@@ -162,3 +162,83 @@ def get_corr_matrix(prices, periods):
     corr_matrix.loc['mean'] = (corr_matrix.sum(axis=0) - 1) / (ncol-1)
 
     return corr_matrix
+
+
+# ============================================================
+# 파생 지표 계산 (Derived Metrics)
+# ============================================================
+
+def calculate_momentum_quality(momentum, period):
+    """
+    Momentum Quality (√R² × AS) 계산
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        Momentum 데이터 (RS{period}, AS{period} 컬럼 필요)
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Momentum Quality 값
+    """
+    return np.sqrt(momentum[f'RS{period}']) * momentum[f'AS{period}']
+
+
+def calculate_sharpe_ratio(performance, period):
+    """
+    Sharpe Ratio (AR / SD) 계산
+
+    Parameters:
+    -----------
+    performance : pd.DataFrame
+        Performance 데이터 (AR{period}, SD{period} 컬럼 필요)
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Sharpe Ratio 값
+    """
+    return performance[f'AR{period}'] / performance[f'SD{period}']
+
+
+def calculate_sortino_ratio(performance, period):
+    """
+    Sortino Ratio (AR / DD) 계산
+
+    Parameters:
+    -----------
+    performance : pd.DataFrame
+        Performance 데이터 (AR{period}, DD{period} 컬럼 필요)
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Sortino Ratio 값
+    """
+    return performance[f'AR{period}'] / performance[f'DD{period}']
+
+
+def calculate_correlation_coefficient(momentum, period):
+    """
+    Correlation Coefficient (√R²) 계산
+
+    Parameters:
+    -----------
+    momentum : pd.DataFrame
+        Momentum 데이터 (RS{period} 컬럼 필요)
+    period : int
+        기간 (개월)
+
+    Returns:
+    --------
+    pd.Series
+        Correlation Coefficient 값
+    """
+    return np.sqrt(momentum[f'RS{period}'])

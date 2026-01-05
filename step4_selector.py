@@ -9,16 +9,16 @@ import numpy as np
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
-from core.backtest import (
+from core.signals import calculate_signals_at_date
+from core.strategy import (
     StrategyConfig,
-    calculate_signals_at_date,
+    calculate_avg_momentum, calculate_avg_rsquared, calculate_marginal_means,
     apply_filters,
     build_selected_dataframe,
     build_portfolio,
     format_portfolio_as_dataframe,
     calculate_portfolio_comparison
 )
-
 
 # ============================================================
 # Selection Configuration Pattern
@@ -38,8 +38,90 @@ SELECTION_STRATEGIES = [
 
 
 # ============================================================
-# Helper Functions (step4 전용 로직만 유지)
+# Factory Pattern (backtest와 일관성 유지)
 # ============================================================
+
+
+def create_portfolio_builder(config: StrategyConfig, tickers_info: pd.DataFrame):
+    """
+    포트폴리오 빌더 함수를 생성하는 Factory 함수
+
+    backtest01.py의 create_strategy_selector() 패턴과 일관성 유지
+
+    Parameters:
+    -----------
+    config : StrategyConfig
+        전략 설정
+    tickers_info : pd.DataFrame
+        종목 정보 (Code, Name 컬럼)
+
+    Returns:
+    --------
+    Callable
+        builder(closeM, closeM_log, end_idx, verbose) -> (selected_df, portfolio_df)
+    """
+    def builder(
+        closeM: pd.DataFrame,
+        closeM_log: pd.DataFrame,
+        end_idx: int,
+        verbose: bool = True
+    ) -> tuple:
+        """
+        특정 시점의 포트폴리오 계산
+
+        Parameters:
+        -----------
+        closeM : pd.DataFrame
+            월별 종가 데이터
+        closeM_log : pd.DataFrame
+            로그 변환된 월별 종가
+        end_idx : int
+            계산 기준 인덱스 (음수 가능: -1=최신, -2=1달 전)
+        verbose : bool
+            출력 여부
+
+        Returns:
+        --------
+        tuple
+            (selected_df, portfolio_df)
+        """
+        # 인덱스 정규화
+        if end_idx < 0:
+            end_idx = len(closeM) + end_idx
+
+        # 1. 시그널 계산
+        momentum, correlation = calculate_signals_at_date(
+            closeM_log, closeM, end_idx, include_macd=config.use_macd_filter
+        )
+
+        # 2. 필터링 (backtest의 apply_filters와 동일)
+        tickers = apply_filters(
+            momentum,
+            correlation,
+            config.momentum_ratio,
+            config.rsquared_ratio,
+            config.correlation_ratio
+        )
+
+        # 3. 선택된 종목 DataFrame 구성
+        avg_mmt = calculate_avg_momentum(momentum)
+        avg_rs = calculate_avg_rsquared(momentum)
+        corr_matrix = correlation.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
+        marg_means = calculate_marginal_means(corr_matrix, tickers)
+
+        selected = build_selected_dataframe(tickers, tickers_info, avg_mmt, avg_rs, marg_means)
+
+        # 4. 포트폴리오 구성 (backtest의 build_portfolio와 동일)
+        portfolio_dict = build_portfolio(
+            tickers, momentum,
+            use_inverse=config.use_inverse,
+            use_macd_filter=config.use_macd_filter
+        )
+        portfolio = format_portfolio_as_dataframe(portfolio_dict, tickers_info, verbose=verbose)
+
+        return selected, portfolio
+
+    return builder
 
 
 def main():
@@ -61,72 +143,29 @@ def main():
     tickers_info = import_dataframe_from_json(f'{list_dir}/{market}.json')
     closeM = import_dataframe_from_json(f'{price_dir}/closeM.json')
     closeM.index = pd.to_datetime(closeM.index)
+    closeM_log = np.log(closeM)
     print(f"      Tickers: {tickers_info.shape}")
     print(f"      closeM: {closeM.shape}")
 
-    # 2. 현재 시점 포트폴리오 (최신 데이터 기준)
-    print_progress(2, 5, f"현재 포트폴리오 계산 ({config.description})...")
-    closeM_log = np.log(closeM)
-    end_idx_current = len(closeM) - 1
-    momentum_current, correlation_current = calculate_signals_at_date(
-        closeM_log, closeM, end_idx_current, include_macd=config.use_macd_filter
-    )
+    # 2. Factory 패턴으로 빌더 생성 (backtest01.py와 동일 패턴)
+    print_progress(2, 5, f"포트폴리오 빌더 생성 ({config.description})...")
+    builder = create_portfolio_builder(config, tickers_info)
 
-    # 필터링 (core.backtest.apply_filters 사용)
-    from core.backtest import calculate_avg_momentum, calculate_avg_rsquared, calculate_marginal_means
+    # 3. 현재 시점 포트폴리오
+    print_progress(3, 5, "현재 포트폴리오 계산...")
+    selected_current, portfolio_current = builder(closeM, closeM_log, -1, verbose=True)
 
-    tickers_current = apply_filters(
-        momentum_current,
-        correlation_current,
-        config.momentum_ratio,
-        config.rsquared_ratio,
-        config.correlation_ratio
-    )
-
-    # 선택된 종목 DataFrame 구성
-    avg_mmt = calculate_avg_momentum(momentum_current)
-    avg_rs = calculate_avg_rsquared(momentum_current)
-    corr_matrix = correlation_current.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-    marg_means = calculate_marginal_means(corr_matrix, tickers_current)
-
-    selected_current = build_selected_dataframe(tickers_current, tickers_info, avg_mmt, avg_rs, marg_means)
-
-    # 포트폴리오 구성
-    portfolio_dict_current = build_portfolio(tickers_current, momentum_current, use_inverse=False, use_macd_filter=config.use_macd_filter)
-    portfolio_current = format_portfolio_as_dataframe(portfolio_dict_current, tickers_info, verbose=True)
-
-    # 3. 1달 전 시점 포트폴리오
-    print_progress(3, 5, "1달 전 포트폴리오 계산...")
+    # 4. 1달 전 시점 포트폴리오
+    print_progress(4, 5, "1달 전 포트폴리오 계산...")
     if len(closeM) >= 2:
-        end_idx_1m_ago = len(closeM) - 2
-        momentum_1m_ago, correlation_1m_ago = calculate_signals_at_date(
-            closeM_log, closeM, end_idx_1m_ago, include_macd=config.use_macd_filter
-        )
-
-        tickers_1m_ago = apply_filters(
-            momentum_1m_ago,
-            correlation_1m_ago,
-            config.momentum_ratio,
-            config.rsquared_ratio,
-            config.correlation_ratio
-        )
-
-        avg_mmt_1m = calculate_avg_momentum(momentum_1m_ago)
-        avg_rs_1m = calculate_avg_rsquared(momentum_1m_ago)
-        corr_matrix_1m = correlation_1m_ago.drop('mean', axis=0, errors='ignore').drop('mean', axis=1, errors='ignore')
-        marg_means_1m = calculate_marginal_means(corr_matrix_1m, tickers_1m_ago)
-
-        selected_1m_ago = build_selected_dataframe(tickers_1m_ago, tickers_info, avg_mmt_1m, avg_rs_1m, marg_means_1m)
-
-        portfolio_dict_1m_ago = build_portfolio(tickers_1m_ago, momentum_1m_ago, use_inverse=False, use_macd_filter=config.use_macd_filter)
-        portfolio_1m_ago = format_portfolio_as_dataframe(portfolio_dict_1m_ago, tickers_info, verbose=True)
+        selected_1m_ago, portfolio_1m_ago = builder(closeM, closeM_log, -2, verbose=True)
     else:
         print("      경고: 데이터 부족으로 1달 전 포트폴리오를 계산할 수 없습니다.")
         selected_1m_ago = None
         portfolio_1m_ago = None
 
-    # 4. 포트폴리오 비교
-    print_progress(4, 5, "포트폴리오 비교 리포트 생성...")
+    # 5. 포트폴리오 비교
+    print_progress(5, 5, "포트폴리오 비교 및 저장...")
     if portfolio_1m_ago is not None:
         comparison = calculate_portfolio_comparison(portfolio_current, portfolio_1m_ago)
 
@@ -143,8 +182,8 @@ def main():
     else:
         comparison = None
 
-    # 5. 저장
-    print_progress(5, 5, f"파일 저장 (HTML, TSV, JSON) → {output_dir}/...")
+    # 6. 저장
+    print(f"\n파일 저장 (HTML, TSV, JSON) → {output_dir}/...")
 
     # 현재 포트폴리오
     export_with_message(selected_current, f'{output_dir}/selected', 'Selected Stocks (Current)')

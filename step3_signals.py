@@ -6,9 +6,9 @@ STEP 3: KRX Signals 생성 및 저장
 import pandas as pd
 import numpy as np
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
-from core.finance import annualize_rt, stdev, dsdev, get_corr_matrix
+from core.finance import annualize_rt, stdev, dsdev, calculate_corr_matrix
 from core.models import LM
-from core.backtest import calculate_all_macd, calculate_all_momentum
+from core.signals import calculate_all_macd, calculate_all_momentum
 from core.config import settings
 from core.utils import print_step_header, print_progress, print_completion
 
@@ -80,7 +80,7 @@ def main():
 
     # 4. Correlation Matrix 계산
     print_progress(4, 5, f"Correlation Matrix 계산 (최근 {corr_periods}개월)...")
-    corrM = get_corr_matrix(closeM, corr_periods)
+    corrM = calculate_corr_matrix(closeM, corr_periods)
     print(f"      완료: {corrM.shape}")
 
     # 5. MACD 계산 및 momentum에 추가

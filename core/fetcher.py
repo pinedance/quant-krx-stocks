@@ -499,3 +499,39 @@ def get_price(tickers, start_date=None, end_date=None):
     closeD = pd.DataFrame(close_series)
 
     return closeD
+
+
+# ============================================================
+# ETF Data Functions
+# ============================================================
+
+def get_etf_data(ticker: str, start_date, end_date) -> Optional[pd.Series]:
+    """
+    ETF 월말 종가 데이터 가져오기
+
+    Parameters:
+    -----------
+    ticker : str
+        ETF 티커 (예: '069500', '114800')
+    start_date : datetime
+        시작일
+    end_date : datetime
+        종료일
+
+    Returns:
+    --------
+    pd.Series or None
+        ETF 월말 종가
+    """
+    try:
+        # ETF 데이터 다운로드
+        etf_data = fdr.DataReader(ticker, start_date, end_date)
+        etf_data.index = pd.to_datetime(etf_data.index)
+
+        # 월말 종가만 추출
+        etf_monthly = etf_data['Close'].resample('ME').last()
+
+        return etf_monthly
+    except Exception as e:
+        print(f"  경고: {ticker} 데이터를 가져올 수 없습니다: {e}")
+        return None

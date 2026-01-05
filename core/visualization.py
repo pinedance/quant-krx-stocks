@@ -5,7 +5,6 @@
 
 구성:
 -----
-- 지표 계산 함수 (momentum quality, sharpe ratio 등)
 - Plotly 차트 헬퍼 함수 (axis, trendline, scatter 등)
 - 복합 차트 빌더 (multi-period scatter 등)
 - 개별 차트 생성 함수 (momentum, performance 차트)
@@ -20,86 +19,12 @@ import networkx as nx
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 from core.config import settings
-
-
-# ============================================================
-# 지표 계산 함수
-# ============================================================
-
-def calculate_momentum_quality(momentum, period):
-    """
-    Momentum Quality (R × AS) 계산
-
-    Parameters:
-    -----------
-    momentum : pd.DataFrame
-        Momentum 데이터
-    period : int
-        기간 (개월)
-
-    Returns:
-    --------
-    pd.Series
-        Momentum Quality 값
-    """
-    return np.sqrt(momentum[f'RS{period}']) * momentum[f'AS{period}']
-
-
-def calculate_sharpe_ratio(performance, period):
-    """
-    Sharpe Ratio (AR / SD) 계산
-
-    Parameters:
-    -----------
-    performance : pd.DataFrame
-        Performance 데이터
-    period : int
-        기간 (개월)
-
-    Returns:
-    --------
-    pd.Series
-        Sharpe Ratio 값
-    """
-    return performance[f'AR{period}'] / performance[f'SD{period}']
-
-
-def calculate_sortino_ratio(performance, period):
-    """
-    Sortino Ratio (AR / DD) 계산
-
-    Parameters:
-    -----------
-    performance : pd.DataFrame
-        Performance 데이터
-    period : int
-        기간 (개월)
-
-    Returns:
-    --------
-    pd.Series
-        Sortino Ratio 값
-    """
-    return performance[f'AR{period}'] / performance[f'DD{period}']
-
-
-def calculate_correlation_coefficient(momentum, period):
-    """
-    Correlation Coefficient (√R²) 계산
-
-    Parameters:
-    -----------
-    momentum : pd.DataFrame
-        Momentum 데이터
-    period : int
-        기간 (개월)
-
-    Returns:
-    --------
-    pd.Series
-        Correlation Coefficient 값
-    """
-    return np.sqrt(momentum[f'RS{period}'])
+from core.finance import (
+    calculate_momentum_quality,
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+    calculate_correlation_coefficient
+)
 
 
 # ============================================================
