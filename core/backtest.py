@@ -1496,3 +1496,204 @@ def build_portfolio(
         portfolio['INVERSE'] = inverse_weight
 
     return portfolio
+
+
+def build_selected_dataframe(
+    tickers: list,
+    tickers_info: pd.DataFrame,
+    avg_momentum: pd.Series,
+    avg_rsquared: pd.Series,
+    marginal_means: pd.Series
+) -> pd.DataFrame:
+    """
+    선택된 종목 정보를 DataFrame으로 구성
+
+    Parameters:
+    -----------
+    tickers : list
+        선택된 종목 리스트
+    tickers_info : pd.DataFrame
+        전체 종목 정보 (Code, Name 컬럼 포함)
+    avg_momentum : pd.Series
+        평균 모멘텀 (13612MR)
+    avg_rsquared : pd.Series
+        평균 R-squared
+    marginal_means : pd.Series
+        Marginal means
+
+    Returns:
+    --------
+    pd.DataFrame
+        선택된 종목 정보 (index: Ticker with 'S' prefix, columns: Name, avg_momentum, avg_rsquared, marginal_mean)
+    """
+    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
+
+    selected_data = []
+    for ticker in tickers:
+        selected_data.append({
+            'Ticker': f'S{ticker}',
+            'Name': ticker_to_name.get(ticker, ''),
+            'avg_momentum': avg_momentum[ticker],
+            'avg_rsquared': avg_rsquared[ticker],
+            'marginal_mean': marginal_means[ticker]
+        })
+
+    selected = pd.DataFrame(selected_data)
+    selected = selected.set_index('Ticker')
+
+    return selected
+
+
+def format_portfolio_as_dataframe(
+    portfolio_dict: Dict[str, float],
+    tickers_info: pd.DataFrame,
+    verbose: bool = True
+) -> pd.DataFrame:
+    """
+    백테스트용 Dict를 출력용 DataFrame으로 변환
+
+    Parameters:
+    -----------
+    portfolio_dict : Dict[str, float]
+        포트폴리오 (ticker: weight) from build_portfolio()
+    tickers_info : pd.DataFrame
+        종목 정보 (Code, Name 컬럼 포함)
+    verbose : bool
+        요약 정보 출력 여부
+
+    Returns:
+    --------
+    pd.DataFrame
+        포트폴리오 DataFrame (columns: Ticker, Name, Weight)
+        index: 1, 2, 3, ... (종목), '' (Cash 행)
+    """
+    if len(portfolio_dict) == 0:
+        # 빈 포트폴리오: Cash 100%
+        portfolio_df = pd.DataFrame([{
+            'Ticker': 'Cash',
+            'Name': '',
+            'Weight': 1.0
+        }])
+        portfolio_df.index = ['']
+        return portfolio_df
+
+    ticker_to_name = dict(zip(tickers_info['Code'], tickers_info['Name']))
+
+    # INVERSE와 일반 종목 분리
+    inverse_weight = portfolio_dict.pop('INVERSE', 0.0)
+
+    # 일반 종목들을 DataFrame으로 변환
+    weights = []
+    for ticker, weight in portfolio_dict.items():
+        weights.append({
+            'Ticker': f'S{ticker}',  # 'S' prefix 추가
+            'Name': ticker_to_name.get(ticker, ''),
+            'Weight': weight
+        })
+
+    # DataFrame 생성 및 Ticker 기준 오름차순 정렬
+    portfolio = pd.DataFrame(weights)
+    portfolio = portfolio.sort_values('Ticker')
+
+    # 정렬 후 index 재설정 (1부터 시작)
+    portfolio.index = range(1, len(portfolio) + 1)
+    portfolio.index.name = 'No'
+
+    # Cash 행 추가
+    total_invested = portfolio['Weight'].sum() + inverse_weight
+    cash_weight = 1.0 - total_invested
+    cash_row = pd.DataFrame([{
+        'Ticker': 'Cash',
+        'Name': '',
+        'Weight': cash_weight
+    }], index=[''])
+    portfolio = pd.concat([portfolio, cash_row])
+
+    # 요약 정보 출력
+    if verbose:
+        n_invested = (portfolio['Weight'] > 0).sum() - 1  # Cash 제외
+        print(f"      투자 종목: {n_invested}개 ({total_invested:.1%})")
+        if inverse_weight > 0:
+            print(f"      인버스 ETF: {inverse_weight:.1%}")
+        print(f"      현금 보유: {cash_weight:.1%}")
+
+    return portfolio
+
+
+def calculate_portfolio_comparison(
+    portfolio_current: pd.DataFrame,
+    portfolio_1m_ago: pd.DataFrame
+) -> pd.DataFrame:
+    """
+    현재 포트폴리오와 1달 전 포트폴리오 비교
+
+    Parameters:
+    -----------
+    portfolio_current : pd.DataFrame
+        현재 포트폴리오 (Ticker, Name, Weight 컬럼)
+    portfolio_1m_ago : pd.DataFrame
+        1달 전 포트폴리오 (Ticker, Name, Weight 컬럼)
+
+    Returns:
+    --------
+    pd.DataFrame
+        비교 리포트 (Ticker, Name, Weight_current, Weight_1m_ago, Weight_change, Status 컬럼)
+    """
+    # Cash 제외
+    current_stocks = portfolio_current[portfolio_current['Ticker'] != 'Cash'].copy()
+    prev_stocks = portfolio_1m_ago[portfolio_1m_ago['Ticker'] != 'Cash'].copy()
+
+    # Ticker를 기준으로 merge (outer join)
+    current_stocks = current_stocks.set_index('Ticker')
+    prev_stocks = prev_stocks.set_index('Ticker')
+
+    comparison = pd.DataFrame(index=sorted(set(current_stocks.index) | set(prev_stocks.index)))
+    comparison['Name'] = current_stocks['Name'].combine_first(prev_stocks['Name'])
+    comparison['Weight_current'] = current_stocks['Weight'].reindex(comparison.index).fillna(0.0)
+    comparison['Weight_1m_ago'] = prev_stocks['Weight'].reindex(comparison.index).fillna(0.0)
+    comparison['Weight_change'] = comparison['Weight_current'] - comparison['Weight_1m_ago']
+
+    # Status 계산
+    def get_status(row):
+        if row['Weight_1m_ago'] == 0 and row['Weight_current'] > 0:
+            return 'New'
+        elif row['Weight_1m_ago'] > 0 and row['Weight_current'] == 0:
+            return 'Removed'
+        elif row['Weight_1m_ago'] == 0 and row['Weight_current'] == 0:
+            return 'N/A'
+        elif abs(row['Weight_change']) < 1e-6:
+            return 'Unchanged'
+        else:
+            return 'Rebalanced'
+
+    comparison['Status'] = comparison.apply(get_status, axis=1)
+
+    # N/A 제외 및 정렬 (Status 우선, Ticker 차순)
+    comparison = comparison[comparison['Status'] != 'N/A']
+    status_order = {'New': 1, 'Removed': 2, 'Rebalanced': 3, 'Unchanged': 4}
+    comparison['_sort_key'] = comparison['Status'].map(status_order)
+    comparison = comparison.sort_values(by='_sort_key')
+    comparison = comparison.sort_index()  # Ticker(index) 기준 2차 정렬
+    comparison = comparison.drop(columns=['_sort_key'])
+
+    # index를 Ticker 컬럼으로 복원
+    comparison = comparison.reset_index()
+    comparison = comparison.rename(columns={'index': 'Ticker'})
+
+    # Cash 행 추가
+    cash_current = portfolio_current[portfolio_current['Ticker'] == 'Cash']['Weight'].values[0]
+    cash_1m_ago = portfolio_1m_ago[portfolio_1m_ago['Ticker'] == 'Cash']['Weight'].values[0]
+    cash_change = cash_current - cash_1m_ago
+
+    cash_row = pd.DataFrame([{
+        'Ticker': 'Cash',
+        'Name': '',
+        'Weight_current': cash_current,
+        'Weight_1m_ago': cash_1m_ago,
+        'Weight_change': cash_change,
+        'Status': 'Cash'
+    }])
+
+    comparison = pd.concat([comparison, cash_row], ignore_index=True)
+
+    return comparison
