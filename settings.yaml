@@ -21,6 +21,18 @@ stocks:
     # download_method: batch  # 예: parallel, batch, onebyone
     download_method: parallel  # 예: parallel, batch, onebyone
 
+# Fetcher 모듈 설정
+fetcher:
+  naver:
+    api_url: "https://stock.naver.com/api/domestic/market/stock/default"
+    api_referer: "https://stock.naver.com/market/stock/kr/stocklist/capitalization"
+    timeout: 10
+    page_size: 500
+    fetch_special_flags: true  # 특수 종목 플래그 수집 여부
+  price:
+    batch_threshold: 10  # 이 개수 이하면 batch 모드 자동 적용
+    max_workers: null  # ThreadPool worker 수 (null이면 CPU count 사용)
+
 # 분석 기간 설정
 signals:
   momentum:

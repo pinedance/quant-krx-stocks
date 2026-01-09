@@ -14,8 +14,9 @@ def main():
 
     # KRX 종목 리스트 가져오기
     market = settings.stocks.list.market
+    list_source = settings.stocks.list.source
 
-    print("\n종목 리스트를 가져오는 중...")
+    print(f"\n종목 리스트를 가져오는 중... (소스: {list_source})")
     df = get_list(market)
 
     if df.empty:

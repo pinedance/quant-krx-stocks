@@ -3,6 +3,7 @@ STEP 2: KRX 데이터 생성 및 저장
 """
 from datetime import datetime
 import pytz
+import os
 from core.fetcher import get_price
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.utils import date_before
@@ -79,6 +80,19 @@ def main():
 
     # Code 리스트로 변환
     tickers_lst = tickers_subset['Code'].tolist()
+
+    # 다운로드 방식 출력
+    download_method = settings.stocks.price.download_method
+    batch_threshold = settings.fetcher.price.batch_threshold
+
+    if download_method == "batch" or (download_method == "parallel" and len(tickers_lst) <= batch_threshold):
+        print(f"      배치 다운로드 모드")
+    elif download_method == "parallel":
+        max_workers = settings.fetcher.price.max_workers or os.cpu_count() or 4
+        print(f"      병렬 다운로드 모드 (workers={max_workers})")
+    else:
+        print(f"      순차 다운로드 모드")
+
     closeD = get_price(tickers_lst, start_date=start_date)
     print(f"      다운로드 완료 | 종목(열): {closeD.shape[1]}, 날짜(행): {closeD.shape[0]}")
 
