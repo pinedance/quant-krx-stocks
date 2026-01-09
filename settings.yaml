@@ -5,7 +5,8 @@ stocks:
   list:
     market: 'KRX'
     source: 'Naver'  # 종목 리스트 데이터 소스 (KRX, Naver)
-    n_universe: 300  # universe 종목 수
+    # n_universe: 300  # universe 종목 수
+    n_universe: 10  # universe 종목 수 For Test
     n_buffer: 50     # 데이터 미달 종목을 염두한 버퍼
   price:
     periods: 63      # 5년 + 버퍼 3개월    # 몇 개월치 데이터를 가져올지

@@ -112,8 +112,10 @@ def main():
 
     # DataTables 인터랙티브 버전 추가
     print("\n인터랙티브 테이블 생성 (DataTables)...")
-    export_dataframe_to_datatable(closeD, f'{price_dir}/closeD', 'Daily Price - Interactive Table')
-    export_dataframe_to_datatable(closeM, f'{price_dir}/closeM', 'Monthly Price - Interactive Table')
+    closeD_dt_path = export_dataframe_to_datatable(closeD, f'{price_dir}/closeD', 'Daily Price - Interactive Table')
+    closeM_dt_path = export_dataframe_to_datatable(closeM, f'{price_dir}/closeM', 'Monthly Price - Interactive Table')
+    print(f"  ✓ {closeD_dt_path}")
+    print(f"  ✓ {closeM_dt_path}")
 
     print_completion(2)
 

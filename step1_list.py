@@ -30,20 +30,23 @@ def main():
     print("\n출력 파일 생성 중...")
 
     list_dir = settings.output.list_dir.path
-    export_dataframe_to_formats(
+    paths = export_dataframe_to_formats(
         df,
         f'{list_dir}/{market}',
         f'{market.upper()} 종목 리스트',
         include_index=False
     )
+    for path in paths.values():
+        print(f"  ✓ {path}")
 
     # DataTables 인터랙티브 버전 추가
     print("\n인터랙티브 테이블 생성 (DataTables)...")
-    export_dataframe_to_datatable(
+    datatable_path = export_dataframe_to_datatable(
         df.set_index('Code'),  # Code를 index로 설정
         f'{list_dir}/{market}',
         f'{market.upper()} 종목 리스트 - Interactive Table'
     )
+    print(f"  ✓ {datatable_path}")
 
     print_completion(1)
 

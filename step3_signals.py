@@ -101,8 +101,10 @@ def main():
 
     # DataTables 인터랙티브 버전 추가
     print("\n인터랙티브 테이블 생성 (DataTables)...")
-    export_dataframe_to_datatable(mmtM, f'{signal_dir}/momentum', 'Momentum Indicators - Interactive Table')
-    export_dataframe_to_datatable(pfmM, f'{signal_dir}/performance', 'Performance Indicators - Interactive Table')
+    mmt_dt_path = export_dataframe_to_datatable(mmtM, f'{signal_dir}/momentum', 'Momentum Indicators - Interactive Table')
+    pfm_dt_path = export_dataframe_to_datatable(pfmM, f'{signal_dir}/performance', 'Performance Indicators - Interactive Table')
+    print(f"  ✓ {mmt_dt_path}")
+    print(f"  ✓ {pfm_dt_path}")
 
     print_completion(3)
 

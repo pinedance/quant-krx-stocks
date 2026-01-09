@@ -200,9 +200,11 @@ def main():
 
     # DataTables 인터랙티브 버전 추가
     print("\n인터랙티브 테이블 생성 (DataTables)...")
-    export_dataframe_to_datatable(selected_current, f'{output_dir}/selected', 'Selected Stocks (Current) - Interactive Table')
+    selected_dt_path = export_dataframe_to_datatable(selected_current, f'{output_dir}/selected', 'Selected Stocks (Current) - Interactive Table')
+    print(f"  ✓ {selected_dt_path}")
     if comparison is not None:
-        export_dataframe_to_datatable(comparison, f'{output_dir}/portfolio_comparison', 'Portfolio Comparison - Interactive Table')
+        comparison_dt_path = export_dataframe_to_datatable(comparison, f'{output_dir}/portfolio_comparison', 'Portfolio Comparison - Interactive Table')
+        print(f"  ✓ {comparison_dt_path}")
 
     print_completion(4)
 
