@@ -1,6 +1,6 @@
 """HTML 템플릿 렌더링 모듈 - 순수 렌더링만 담당"""
 from jinja2 import Environment, FileSystemLoader
-from core.config import get_config
+from core.config import settings
 
 
 # ============================================================
@@ -21,7 +21,7 @@ def _get_jinja_env():
     """
     global _jinja_env
     if _jinja_env is None:
-        template_dir = get_config("template.base_dir")
+        template_dir = settings.template.base_dir
         _jinja_env = Environment(loader=FileSystemLoader(template_dir))
     return _jinja_env
 

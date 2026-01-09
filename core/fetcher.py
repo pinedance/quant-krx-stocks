@@ -6,7 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import requests
 from typing import Optional, Set
-from core.config import get_config
+from core.config import settings
 from core.utils import smart_progress
 
 # ============================================================
@@ -367,7 +367,7 @@ def get_list(market="KRX", list_source=None):
 
     # list_source가 지정되지 않으면 설정에서 읽기
     if list_source is None:
-        list_source = get_config('stocks.list.source', 'Naver')
+        list_source = settings.stocks.list.source
 
     print(f"데이터 소스: {list_source}")
 
@@ -446,8 +446,8 @@ def get_price(tickers, start_date=None, end_date=None):
         end_date = datetime.now().strftime('%Y-%m-%d')
 
     # 설정 로드
-    download_method = get_config('stocks.price.download_method', DOWNLOAD_METHOD_PARALLEL)
-    data_source = get_config('stocks.price.download_source', None)
+    download_method = settings.stocks.price.download_method
+    data_source = settings.stocks.price.download_source
     max_workers = os.cpu_count() or DEFAULT_MAX_WORKERS
 
     # 배치 다운로드 모드

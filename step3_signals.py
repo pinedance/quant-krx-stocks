@@ -51,7 +51,7 @@ def main():
 
     # Annualized Slope (AS) 및 추가 R² 계산
     # 1~12개월 + mnt_periods (중복 제거 및 정렬)
-    all_periods = sorted(set(list(range(1, 13)) + mnt_periods))
+    all_periods = sorted(set(list(range(1, 13)) + list(mnt_periods)))
     for period in all_periods:
         LR = LM().fit(closeM_log, period)
         mmtM[f'AS{period}'] = (np.exp(LR.slope * 12) - 1)  # 연율화, Monthly

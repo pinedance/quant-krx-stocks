@@ -109,7 +109,7 @@ def main():
 
     # Telegram 메시지 전송
     project_name = settings.project.name
-    project_url = settings.project.url if hasattr(settings.project, 'url') else None
+    project_url = settings.project.url
 
     if failed:
         status_emoji = "❌"

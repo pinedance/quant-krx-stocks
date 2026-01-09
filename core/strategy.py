@@ -291,7 +291,8 @@ def build_selected_dataframe(
             'marginal_mean': marginal_means[ticker]
         })
 
-    selected = pd.DataFrame(selected_data)
+    # 명시적으로 컬럼 지정 (tickers가 비어있을 때도 컬럼 구조 유지)
+    selected = pd.DataFrame(selected_data, columns=['Ticker', 'Name', 'avg_momentum', 'avg_rsquared', 'marginal_mean'])
     selected = selected.set_index('Ticker')
 
     return selected

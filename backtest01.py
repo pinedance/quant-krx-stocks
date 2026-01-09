@@ -172,7 +172,7 @@ def main():
     price_dir = settings.output.price_dir.path
     backtest_base_dir = settings.output.backtest_dir.path
     output_dir = f"{backtest_base_dir}/{SUBDIR}"
-    end_date = settings.backtest.end_date if hasattr(settings, 'backtest') else None
+    end_date = settings.backtest.end_date
     ensure_directory(output_dir)
 
     # 1. 가격 데이터 로드
