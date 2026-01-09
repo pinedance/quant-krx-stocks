@@ -3,11 +3,11 @@ from datetime import datetime
 import pandas as pd
 import FinanceDataReader as fdr
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
 import os
 import requests
 from typing import Optional, Set
 from core.config import get_config
+from core.utils import smart_progress
 
 # ============================================================
 # Constants
@@ -474,7 +474,7 @@ def get_price(tickers, start_date=None, end_date=None):
                 executor.submit(_price_download_single_ticker, ticker, start_date, end_date, data_source): ticker
                 for ticker in tickers
             }
-            for future in tqdm(as_completed(futures), total=len(futures), desc="Downloading"):
+            for future in smart_progress(as_completed(futures), desc="Downloading", total=len(futures)):
                 ticker, df = future.result()
                 if df is not None:
                     price_data[ticker] = df
@@ -482,7 +482,7 @@ def get_price(tickers, start_date=None, end_date=None):
     # 순차 다운로드 모드
     else:
         print("      순차 다운로드 모드")
-        for ticker in tqdm(tickers, desc="Downloading"):
+        for ticker in smart_progress(tickers, desc="Downloading"):
             try:
                 ticker, df = _price_download_single_ticker(ticker, start_date, end_date, data_source)
                 if df:
