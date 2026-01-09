@@ -144,6 +144,21 @@ STRATEGIES = [
         description="MACD Filter - Strategy 3 + MACD 오실레이터"
     ),
     StrategyConfig(
+        name="S243",
+        momentum_ratio=1/2,
+        rsquared_ratio=1/4,
+        correlation_ratio=1/3,
+        description="추세 품질 + 분산 효과 강화"
+    ),
+    StrategyConfig(
+        name="S243MACD",
+        momentum_ratio=1/2,
+        rsquared_ratio=1/4,
+        correlation_ratio=1/3,
+        use_macd_filter=True,
+        description="MACD Filter - Strategy 3 + MACD 오실레이터"
+    ),
+    StrategyConfig(
         name="S432",
         momentum_ratio=1/4,
         rsquared_ratio=1/3,

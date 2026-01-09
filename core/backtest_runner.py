@@ -96,7 +96,8 @@ def calculate_metrics(returns: pd.Series, benchmark_returns: Optional[pd.Series]
         metrics['Information Ratio'] = information_ratio
 
         # Alpha (초과 수익)
-        benchmark_cagr = (1 + (1 + benchmark_returns).prod() - 1) ** (1 / n_years) - 1 if n_years > 0 else 0
+        benchmark_total_return = (1 + benchmark_returns).prod() - 1
+        benchmark_cagr = (1 + benchmark_total_return) ** (1 / n_years) - 1 if n_years > 0 else 0
         metrics['Alpha'] = cagr - benchmark_cagr
 
     return metrics
