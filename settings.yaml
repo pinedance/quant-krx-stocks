@@ -37,8 +37,14 @@ fetcher:
 signals:
   momentum:
     periods: [12, 36, 60]  # 분석 기간 (개월)
+    calculation_periods: [1, 3, 6, 12]  # 13612MR 계산 기간
+    rsquared_periods: [3, 6, 12]  # R² 계산 기간
   correlation:
-    periods: 12             # 상관관계 계산 기간 (개월)
+    periods: 12  # 상관관계 계산 기간 (개월)
+  macd:
+    fast_period: 12  # MACD 단기 EMA 기간
+    slow_period: 26  # MACD 장기 EMA 기간
+    signal_period: 9  # MACD Signal Line EMA 기간
 
 # 백테스트 설정
 backtest:

@@ -8,7 +8,7 @@ import numpy as np
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.finance import annualize_rt, stdev, dsdev, calculate_corr_matrix
 from core.models import LM
-from core.signals import calculate_all_macd, calculate_all_momentum
+from core.signals import calculate_signals_at_date
 from core.config import settings
 from core.console import print_step_header, print_progress, print_completion
 
@@ -34,30 +34,19 @@ def main():
     # 2. Momentum 지표 계산
     print_progress(2, 5, "Momentum 지표 계산...")
 
-    # Core momentum indicators (13612MR, RS3, RS6, RS12) - 재사용
-    mmt_13612MR_ts, rs_3_ts, rs_6_ts, rs_12_ts = calculate_all_momentum(closeM, closeM_log, verbose=False)
+    # calculate_signals_at_date 재사용 (최신 시점 계산)
+    from core.signals import calculate_signals_at_date
+    mmtM, _ = calculate_signals_at_date(closeM_log, closeM, -1, include_macd=True)
 
-    # 최신 값만 추출
-    mmtM = pd.DataFrame(index=closeM.columns)
-    mmtM['13612MR'] = mmt_13612MR_ts.iloc[-1]
-    mmtM['RS3'] = rs_3_ts.iloc[-1]
-    mmtM['RS6'] = rs_6_ts.iloc[-1]
-    mmtM['RS12'] = rs_12_ts.iloc[-1]
-
-    # 개별 월별 수익률 (1~12MR) 계산
-    for i in range(1, 13):
-        returns = closeM.pct_change(periods=i).iloc[-1]
-        mmtM[f'{i}MR'] = returns
-
-    # Annualized Slope (AS) 및 추가 R² 계산
-    # 1~12개월 + mnt_periods (중복 제거 및 정렬)
+    # 추가 분석 기간 지표 계산 (settings.yaml의 periods 사용)
     all_periods = sorted(set(list(range(1, 13)) + list(mnt_periods)))
     for period in all_periods:
-        LR = LM().fit(closeM_log, period)
-        mmtM[f'AS{period}'] = (np.exp(LR.slope * 12) - 1)  # 연율화, Monthly
-        # RS3, RS6, RS12는 이미 계산했으므로 중복 방지
-        if period not in [3, 6, 12]:
-            mmtM[f'RS{period}'] = LR.score
+        if len(closeM_log) >= period:
+            LR = LM().fit(closeM_log, period)
+            mmtM[f'AS{period}'] = (np.exp(LR.slope * 12) - 1)
+            # RS3, RS6, RS12는 이미 계산되어 있음 (중복 방지)
+            if period not in [3, 6, 12]:
+                mmtM[f'RS{period}'] = LR.score
 
     print(f"      완료: {mmtM.shape}")
 
@@ -83,14 +72,9 @@ def main():
     corrM = calculate_corr_matrix(closeM, corr_periods)
     print(f"      완료: {corrM.shape}")
 
-    # 5. MACD 계산 및 momentum에 추가
-    print_progress(5, 5, "MACD 오실레이터 계산...")
-    macdM = calculate_all_macd(closeM, fast_period=12, slow_period=26, signal_period=9, verbose=False)
-    # 마지막 행만 추출 (최신 MACD 값) - 행: 날짜, 열: 종목
-    macd_latest = macdM.iloc[-1]  # Series: index=종목, value=MACD Histogram
-    # momentum DataFrame에 MACD_Histogram 컬럼 추가
-    mmtM['MACD_Histogram'] = macd_latest
-    print(f"      완료: MACD Histogram을 momentum에 추가 ({len(mmtM)}개 종목)")
+    # 5. MACD는 이미 mmtM에 포함되어 있음 (calculate_signals_at_date에서 계산)
+    print_progress(5, 5, "최종 지표 정리...")
+    print(f"      완료: Momentum 지표 {mmtM.shape}, Performance 지표 {pfmM.shape}, Correlation {corrM.shape}")
 
     # 6. 저장
     print("\n파일 저장 (HTML, TSV, JSON)...")
