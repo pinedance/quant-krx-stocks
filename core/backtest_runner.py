@@ -2,6 +2,9 @@
 백테스트 실행 모듈
 
 백테스트 실행, ETF 데이터 로드, 성과 지표 계산, 결과 저장 함수들을 제공합니다.
+- 레이어 아키텍처 (Layer 0: 지표 계산, Layer 1: 실행/결과 관리)
+- BacktestRunner 클래스로 백테스트 오케스트레이션
+- Pre-computation과 캐싱으로 성능 최적화
 """
 
 import pandas as pd
@@ -11,20 +14,19 @@ from core.finance import calculate_corr_matrix
 from core.signals import calculate_all_momentum, calculate_all_macd, calculate_signals_at_date
 from core.fetcher import get_etf_data
 from core.config import settings
+from core.file import import_dataframe_from_json
 
 
 # ============================================================
-# 상수 정의
+# Constants
 # ============================================================
 
-# 백테스트 설정
 MIN_BACKTEST_MONTHS = 12  # 백테스트 시작 전 필요한 최소 데이터 개월 수
-INVERSE_WEIGHT_RATIO = 0.25  # 인버스 ETF 비중 비율 (1/4)
 MONTHS_PER_YEAR = 12  # 연간 개월 수
 
 
 # ============================================================
-# 성과 지표 계산
+# Layer 0: Metrics Calculation
 # ============================================================
 
 def calculate_metrics(returns: pd.Series, benchmark_returns: Optional[pd.Series] = None) -> Dict[str, float]:
@@ -101,7 +103,7 @@ def calculate_metrics(returns: pd.Series, benchmark_returns: Optional[pd.Series]
 
 
 # ============================================================
-# 백테스트 실행
+# Layer 1: Backtest Execution and Results Management
 # ============================================================
 
 def run_backtest(
@@ -109,7 +111,6 @@ def run_backtest(
     strategy_selector: Callable,
     inverse_etf_prices: Optional[pd.Series] = None,
     end_date: Optional[str] = None,
-    verbose: bool = True,
     signal_provider: Optional[Callable] = None
 ) -> Tuple[pd.Series, pd.Series, List[Dict]]:
     """
@@ -125,8 +126,6 @@ def run_backtest(
         인버스 ETF 가격 (포트폴리오에 'INVERSE' 키가 있으면 사용)
     end_date : str or datetime, optional
         백테스트 종료일
-    verbose : bool
-        진행 상황 출력 여부
     signal_provider : Callable, optional
         시그널 제공 함수 (end_idx를 받아서 momentum, correlation 반환)
         None이면 기본 calculate_signals_at_date 사용
@@ -152,8 +151,6 @@ def run_backtest(
         if len(valid_dates) > 0:
             end_idx = closeM.index.get_loc(valid_dates[-1])
         else:
-            if verbose:
-                print(f"  경고: 종료일 {end_date}이 데이터 범위 밖입니다. 전체 기간 사용.")
             end_idx = len(closeM) - 1
     else:
         end_idx = len(closeM) - 1
@@ -165,10 +162,6 @@ def run_backtest(
     dates = []
 
     current_value = 1.0  # 초기 포트폴리오 가치
-
-    if verbose:
-        print(f"\n백테스트 기간: {closeM.index[start_idx]} ~ {closeM.index[end_idx]}")
-        print(f"총 {end_idx - start_idx + 1}개월\n")
 
     # 시작일(t=0)에 초기값 추가
     start_date = closeM.index[start_idx]
@@ -224,15 +217,6 @@ def run_backtest(
             'cash_weight': 1.0 - sum(portfolio.values())
         })
 
-        # 진행 상황 출력
-        if verbose and (i == start_idx or (i - start_idx + 1) % MONTHS_PER_YEAR == 1):
-            if inverse_weight > 0:
-                print(f"  {signal_date.strftime('%Y-%m')}: 포트폴리오 가치 = {current_value:.4f} "
-                      f"({len(stock_portfolio)}개 종목, 인버스 {inverse_weight:.2%})")
-            else:
-                print(f"  {signal_date.strftime('%Y-%m')}: 포트폴리오 가치 = {current_value:.4f} "
-                      f"({len(stock_portfolio)}개 종목)")
-
     # 최종 날짜(end_idx)의 시그널로 "미래 투자용" 포트폴리오 생성
     if end_idx < len(closeM):
         final_date = closeM.index[end_idx]
@@ -251,22 +235,10 @@ def run_backtest(
             'cash_weight': 1.0 - sum(final_portfolio.values())
         })
 
-        if verbose:
-            if final_inverse_weight > 0:
-                print(f"\n  최종 포트폴리오 ({final_date.strftime('%Y-%m')}): "
-                      f"{len(final_stock_portfolio)}개 종목, 인버스 {final_inverse_weight:.2%}")
-            else:
-                print(f"\n  최종 포트폴리오 ({final_date.strftime('%Y-%m')}): "
-                      f"{len(final_stock_portfolio)}개 종목")
-
     return (pd.Series(portfolio_values, index=dates),
             pd.Series(monthly_returns, index=dates),
             holdings_history)
 
-
-# ============================================================
-# 결과 저장
-# ============================================================
 
 def _build_final_portfolios(strategies: Dict[str, Dict], tickers_info: pd.DataFrame) -> pd.DataFrame:
     """
@@ -381,7 +353,6 @@ def save_backtest_results(
     # TSV 파일로 저장
     metrics_path = f'{output_dir}/metrics.tsv'
     metrics_df.to_csv(metrics_path, sep='\t')
-    print(f"      metrics 저장 완료: {metrics_path}")
 
     # 월별 수익률 비교 데이터 저장
     returns_comparison = {}
@@ -401,7 +372,6 @@ def save_backtest_results(
     returns_df = pd.DataFrame(returns_comparison)
     returns_path = f'{output_dir}/monthly_returns.tsv'
     returns_df.to_csv(returns_path, sep='\t')
-    print(f"      monthly returns 저장 완료: {returns_path}")
 
     # 최종 포트폴리오 저장
     if tickers_info is not None:
@@ -409,11 +379,10 @@ def save_backtest_results(
         if final_portfolios is not None and len(final_portfolios) > 0:
             portfolios_path = f'{output_dir}/portfolio_latest.tsv'
             final_portfolios.to_csv(portfolios_path, sep='\t', index=False)
-            print(f"      portfolio latest 저장 완료: {portfolios_path}")
 
 
 # ============================================================
-# 백테스트 러너 클래스
+# Orchestration: BacktestRunner Class
 # ============================================================
 
 class BacktestRunner:
@@ -443,50 +412,28 @@ class BacktestRunner:
         self._correlation_cache = {}  # Correlation 캐시: end_idx -> correlation_matrix
 
         # Pre-compute: 전체 시계열 지표 계산
-        print("\n" + "="*70)
-        print("지표 사전 계산 (Pre-computation)")
-        print("="*70)
-
-        # 1. 모멘텀 지표 계산
         self.mmt_13612MR, self.rs_3, self.rs_6, self.rs_12 = calculate_all_momentum(
             self.closeM,
-            self.closeM_log,
-            verbose=True
+            self.closeM_log
         )
 
-        # 2. MACD Histogram 계산 (필요 시에만 - 나중에 lazy compute 가능)
+        # MACD Histogram 계산 (필요 시에만 - 나중에 lazy compute 가능)
         self.macd_histogram = None  # 필요할 때 계산
-
-        print("="*70)
 
     def load_benchmark(self, ticker: str = '069500') -> None:
         """벤치마크 ETF 데이터 로드"""
         self.benchmark_prices = get_etf_data(ticker, self.closeM.index[0], self.closeM.index[-1])
         if self.benchmark_prices is not None:
             self.benchmark_returns = self.benchmark_prices.pct_change().dropna()
-            print(f"      벤치마크({ticker}) 로드 완료")
-        else:
-            print(f"      경고: 벤치마크 데이터 없음")
 
     def load_inverse_etf(self, ticker: str = '114800') -> None:
         """인버스 ETF 데이터 로드"""
         self.inverse_etf_prices = get_etf_data(ticker, self.closeM.index[0], self.closeM.index[-1])
-        if self.inverse_etf_prices is not None:
-            print(f"      인버스 ETF({ticker}) 로드 완료")
-        else:
-            print(f"      경고: 인버스 ETF 데이터 없음")
 
     def _ensure_macd_computed(self) -> None:
         """MACD가 필요할 때 lazy하게 계산"""
         if self.macd_histogram is None:
-            print("\n" + "="*70)
-            print("MACD Histogram 계산 (첫 사용 시)")
-            print("="*70)
-            self.macd_histogram = calculate_all_macd(
-                self.closeM,
-                verbose=True
-            )
-            print("="*70)
+            self.macd_histogram = calculate_all_macd(self.closeM)
 
     def _get_correlation_at_date(self, end_idx: int) -> pd.DataFrame:
         """특정 시점의 correlation matrix 가져오기 (캐시 사용)"""
@@ -566,10 +513,6 @@ class BacktestRunner:
         needs_macd : bool
             MACD 계산 필요 여부 (기본값: False, 성능 최적화)
         """
-        print(f"\n{'='*70}")
-        print(f"{name.upper()} 백테스트")
-        print("="*70)
-
         # Pre-computed 데이터를 사용하는 시그널 제공자 생성
         signal_provider = self._create_signal_provider(needs_macd)
 
@@ -579,7 +522,6 @@ class BacktestRunner:
             strategy_selector,
             inverse_prices,
             self.end_date,
-            verbose=True,
             signal_provider=signal_provider
         )
 
@@ -630,15 +572,9 @@ class BacktestRunner:
                 filtered_benchmark = pd.concat([start_series, filtered_benchmark])
 
         # 종목 정보 로드 (최종 포트폴리오 저장용)
-        tickers_info = None
-        try:
-            from core.file import import_dataframe_from_json
-            from core.config import settings
-            market = settings.stocks.list.market
-            list_dir = settings.output.list_dir.path
-            tickers_info = import_dataframe_from_json(f'{list_dir}/{market}.json')
-        except Exception as e:
-            print(f"      경고: 종목 정보 로드 실패 ({e}) - 최종 포트폴리오 종목명 없이 저장")
+        market = settings.stocks.list.market
+        list_dir = settings.output.list_dir.path
+        tickers_info = import_dataframe_from_json(f'{list_dir}/{market}.json')
 
         # 필터링된 benchmark로 저장
         save_backtest_results(

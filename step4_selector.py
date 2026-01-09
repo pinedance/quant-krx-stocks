@@ -58,13 +58,12 @@ def create_portfolio_builder(config: StrategyConfig, tickers_info: pd.DataFrame)
     Returns:
     --------
     Callable
-        builder(closeM, closeM_log, end_idx, verbose) -> (selected_df, portfolio_df)
+        builder(closeM, closeM_log, end_idx) -> (selected_df, portfolio_df)
     """
     def builder(
         closeM: pd.DataFrame,
         closeM_log: pd.DataFrame,
-        end_idx: int,
-        verbose: bool = True
+        end_idx: int
     ) -> tuple:
         """
         특정 시점의 포트폴리오 계산
@@ -77,8 +76,6 @@ def create_portfolio_builder(config: StrategyConfig, tickers_info: pd.DataFrame)
             로그 변환된 월별 종가
         end_idx : int
             계산 기준 인덱스 (음수 가능: -1=최신, -2=1달 전)
-        verbose : bool
-            출력 여부
 
         Returns:
         --------
@@ -117,7 +114,7 @@ def create_portfolio_builder(config: StrategyConfig, tickers_info: pd.DataFrame)
             use_inverse=config.use_inverse,
             use_macd_filter=config.use_macd_filter
         )
-        portfolio = format_portfolio_as_dataframe(portfolio_dict, tickers_info, verbose=verbose)
+        portfolio = format_portfolio_as_dataframe(portfolio_dict, tickers_info)
 
         return selected, portfolio
 
@@ -153,12 +150,12 @@ def main():
 
     # 3. 현재 시점 포트폴리오
     print_progress(3, 5, "현재 포트폴리오 계산...")
-    selected_current, portfolio_current = builder(closeM, closeM_log, -1, verbose=True)
+    selected_current, portfolio_current = builder(closeM, closeM_log, -1)
 
     # 4. 1달 전 시점 포트폴리오
     print_progress(4, 5, "1달 전 포트폴리오 계산...")
     if len(closeM) >= 2:
-        selected_1m_ago, portfolio_1m_ago = builder(closeM, closeM_log, -2, verbose=True)
+        selected_1m_ago, portfolio_1m_ago = builder(closeM, closeM_log, -2)
     else:
         print("      경고: 데이터 부족으로 1달 전 포트폴리오를 계산할 수 없습니다.")
         selected_1m_ago = None

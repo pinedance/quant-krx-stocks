@@ -2,6 +2,9 @@
 전략 설정 및 포트폴리오 구성 모듈
 
 전략 설정, 필터링, 포트폴리오 구성 및 비교 함수들을 제공합니다.
+- 레이어 아키텍처 (Layer 0: 계산, Layer 1: 구성/비교)
+- Factory 패턴으로 전략 생성
+- 벡터 연산 최적화
 """
 
 import pandas as pd
@@ -11,7 +14,15 @@ from dataclasses import dataclass
 
 
 # ============================================================
-# Strategy Configuration
+# 내부 상수 (Minor Constants)
+# ============================================================
+
+_INVERSE_WEIGHT_RATIO = 0.25  # 인버스 ETF 비중 비율 (1/4)
+_WEIGHT_EPSILON = 1e-6  # 가중치 변화 감지 임계값
+
+
+# ============================================================
+# Configuration
 # ============================================================
 
 @dataclass
@@ -46,7 +57,7 @@ class StrategyConfig:
 
 
 # ============================================================
-# 지표 계산
+# Layer 0: 지표 계산 (Indicator Calculation)
 # ============================================================
 
 def calculate_avg_momentum(momentum: pd.DataFrame) -> pd.Series:
@@ -85,7 +96,10 @@ def calculate_avg_rsquared(momentum: pd.DataFrame) -> pd.Series:
             np.sqrt(momentum['RS12'])) / 4
 
 
-def calculate_marginal_means(correlation: pd.DataFrame, tickers: List[str]) -> pd.Series:
+def calculate_marginal_means(
+    correlation: pd.DataFrame,
+    tickers: List[str]
+) -> pd.Series:
     """
     Correlation marginal mean 계산
 
@@ -123,7 +137,7 @@ def calculate_marginal_means(correlation: pd.DataFrame, tickers: List[str]) -> p
 
 
 # ============================================================
-# 필터링
+# Layer 1: 필터링 및 포트폴리오 구성
 # ============================================================
 
 def apply_filters(
@@ -177,10 +191,6 @@ def apply_filters(
 
     return step3_tickers
 
-
-# ============================================================
-# 포트폴리오 구성
-# ============================================================
 
 def build_portfolio(
     tickers: List[str],
@@ -238,7 +248,7 @@ def build_portfolio(
         inverse_weight = 0.0
         if use_inverse:
             n_negative = negative_mask.sum()
-            inverse_weight = (equal_weight / 4) * n_negative
+            inverse_weight = (equal_weight * _INVERSE_WEIGHT_RATIO) * n_negative
 
     # 인버스 가중치 추가
     if inverse_weight > 0 and use_inverse:
@@ -246,10 +256,6 @@ def build_portfolio(
 
     return portfolio
 
-
-# ============================================================
-# DataFrame 구성
-# ============================================================
 
 def build_selected_dataframe(
     tickers: list,
@@ -292,7 +298,10 @@ def build_selected_dataframe(
         })
 
     # 명시적으로 컬럼 지정 (tickers가 비어있을 때도 컬럼 구조 유지)
-    selected = pd.DataFrame(selected_data, columns=['Ticker', 'Name', 'avg_momentum', 'avg_rsquared', 'marginal_mean'])
+    selected = pd.DataFrame(
+        selected_data,
+        columns=['Ticker', 'Name', 'avg_momentum', 'avg_rsquared', 'marginal_mean']
+    )
     selected = selected.set_index('Ticker')
 
     return selected
@@ -300,8 +309,7 @@ def build_selected_dataframe(
 
 def format_portfolio_as_dataframe(
     portfolio_dict: Dict[str, float],
-    tickers_info: pd.DataFrame,
-    verbose: bool = True
+    tickers_info: pd.DataFrame
 ) -> pd.DataFrame:
     """
     백테스트용 Dict를 출력용 DataFrame으로 변환
@@ -312,8 +320,6 @@ def format_portfolio_as_dataframe(
         포트폴리오 (ticker: weight) from build_portfolio()
     tickers_info : pd.DataFrame
         종목 정보 (Code, Name 컬럼 포함)
-    verbose : bool
-        요약 정보 출력 여부
 
     Returns:
     --------
@@ -363,14 +369,6 @@ def format_portfolio_as_dataframe(
     }], index=[''])
     portfolio = pd.concat([portfolio, cash_row])
 
-    # 요약 정보 출력
-    if verbose:
-        n_invested = (portfolio['Weight'] > 0).sum() - 1  # Cash 제외
-        print(f"      투자 종목: {n_invested}개 ({total_invested:.1%})")
-        if inverse_weight > 0:
-            print(f"      인버스 ETF: {inverse_weight:.1%}")
-        print(f"      현금 보유: {cash_weight:.1%}")
-
     return portfolio
 
 
@@ -415,7 +413,7 @@ def calculate_portfolio_comparison(
             return 'Removed'
         elif row['Weight_1m_ago'] == 0 and row['Weight_current'] == 0:
             return 'N/A'
-        elif abs(row['Weight_change']) < 1e-6:
+        elif abs(row['Weight_change']) < _WEIGHT_EPSILON:
             return 'Unchanged'
         else:
             return 'Rebalanced'

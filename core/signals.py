@@ -94,11 +94,7 @@ def _calculate_rsquared_rolling(
 
         # 벡터 연산 (모든 window와 ticker 동시 처리)
         with warnings.catch_warnings():
-            warnings.filterwarnings(
-                'ignore',
-                message='invalid value encountered',
-                category=RuntimeWarning
-            )
+            warnings.filterwarnings('ignore', category=RuntimeWarning)
 
             y_mean = np.nanmean(windows, axis=2, keepdims=True)
             y_centered = windows - y_mean

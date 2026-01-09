@@ -2,6 +2,8 @@
 백테스트 리포트 생성 모듈
 
 HTML 리포트 및 차트 생성 함수들을 제공합니다.
+- 레이어 아키텍처 (Layer 0: 차트 생성, Layer 1: 리포트 생성)
+- Plotly를 사용한 인터랙티브 차트
 """
 
 import pandas as pd
@@ -9,17 +11,19 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from typing import Optional, Dict
 from datetime import datetime
+from core.renderer import render_template
+from core.file import save_html
 
 
 # ============================================================
-# Chart 색상 팔레트
+# Constants
 # ============================================================
 
 CHART_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
 
 
 # ============================================================
-# 개별 차트 생성 함수
+# Layer 0: Chart Creation
 # ============================================================
 
 def _create_cumulative_returns_chart(strategies: Dict[str, Dict], benchmark_returns: Optional[pd.Series] = None):
@@ -182,7 +186,7 @@ def _create_risk_return_chart(metrics_df: pd.DataFrame, strategies: Dict[str, Di
 
 
 # ============================================================
-# HTML 리포트 생성
+# Layer 1: HTML Report Generation
 # ============================================================
 
 def generate_html_report(
@@ -208,8 +212,6 @@ def generate_html_report(
     final_portfolios : pd.DataFrame, optional
         최종 포트폴리오 (Strategy, Ticker, Name, Weight 컬럼)
     """
-    from core.renderer import render_template
-    from core.file import save_html
 
     # 1. 누적 수익률 차트
     fig_cumulative = _create_cumulative_returns_chart(strategies, benchmark_returns)
@@ -288,5 +290,3 @@ def generate_html_report(
     # 템플릿을 사용하여 HTML 생성
     content = render_template('backtest_report.html', render_data)
     save_html(content, output_path)
-
-    print(f"      HTML 리포트 생성 완료: {output_path}")
