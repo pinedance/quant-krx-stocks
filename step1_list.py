@@ -7,7 +7,7 @@ STEP 1: KRX 종목 리스트 생성
 from core.fetcher import get_list
 from core.file import export_dataframe_to_formats, export_dataframe_to_datatable
 from core.config import settings
-from core.utils import print_step_header, print_completion
+from core.console import print_step_header, print_completion
 
 def main():
     print_step_header(1, "종목 리스트 생성")

@@ -7,7 +7,7 @@ import os
 import requests
 from typing import Optional, Set
 from core.config import settings
-from core.utils import smart_progress
+from core.console import smart_progress
 
 # ============================================================
 # Constants

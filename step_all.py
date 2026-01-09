@@ -9,7 +9,7 @@ import time
 import shutil
 from pathlib import Path
 from core.config import settings
-from core.utils import print_directory_tree
+from core.console import print_directory_tree
 from core.message import send_telegram_message
 from core.renderer import render_template
 

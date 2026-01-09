@@ -5,9 +5,8 @@ STEP 5: KRX 대시보드 생성
 
 import json
 from core.config import settings
-from core.file import import_dataframe_from_json, save_html
+from core.file import import_dataframe_from_json, save_html, ensure_directory
 from core.renderer import render_template
-from core.utils import ensure_directory
 from core.visualization import (
     create_monthly_momentum_chart,
     create_regression_momentum_chart,

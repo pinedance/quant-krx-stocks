@@ -10,7 +10,7 @@ from core.finance import annualize_rt, stdev, dsdev, calculate_corr_matrix
 from core.models import LM
 from core.signals import calculate_all_macd, calculate_all_momentum
 from core.config import settings
-from core.utils import print_step_header, print_progress, print_completion
+from core.console import print_step_header, print_progress, print_completion
 
 
 def main():

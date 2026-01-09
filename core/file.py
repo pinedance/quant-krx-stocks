@@ -5,7 +5,6 @@ import numpy as np
 import json
 from pathlib import Path
 from core.renderer import render_template
-from core.utils import ensure_directory
 
 
 # ============================================================
@@ -23,6 +22,18 @@ class ExportConfig:
 # ============================================================
 # Layer 0: 유틸리티 함수
 # ============================================================
+
+def ensure_directory(path):
+    """
+    디렉토리가 없으면 생성합니다.
+
+    Parameters:
+    -----------
+    path : str or Path
+        생성할 디렉토리 경로
+    """
+    Path(path).mkdir(parents=True, exist_ok=True)
+
 
 def _get_timestamp():
     """현재 시각 문자열 반환"""

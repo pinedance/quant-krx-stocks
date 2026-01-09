@@ -5,7 +5,8 @@ from datetime import datetime
 import pytz
 from core.fetcher import get_price
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
-from core.utils import date_before, print_step_header, print_progress, print_completion
+from core.utils import date_before
+from core.console import print_step_header, print_progress, print_completion
 from core.config import settings
 
 

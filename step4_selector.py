@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.config import settings
-from core.utils import print_step_header, print_progress, print_completion
+from core.console import print_step_header, print_progress, print_completion
 from core.signals import calculate_signals_at_date
 from core.strategy import (
     StrategyConfig,
