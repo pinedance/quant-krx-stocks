@@ -17,10 +17,10 @@ from core.visualization import (
     create_sortino_ratio_chart,
     create_momentum_quality_vs_sharpe_chart,
     create_momentum_quality_vs_sortino_chart,
-    build_correlation_graph,
-    detect_communities,
+    create_correlation_graph,
+    create_communities,
     create_vosviewer_json,
-    perform_hierarchical_clustering,
+    create_hierarchical_clusters,
     create_dendrogram_figure
 )
 
@@ -142,7 +142,7 @@ def create_correlation_network(correlation):
     tickers = corr_matrix.index.tolist()
 
     # 그래프 생성
-    graph = build_correlation_graph(corr_matrix, threshold)
+    graph = create_correlation_graph(corr_matrix, threshold)
     print(f"  노드: {graph.number_of_nodes()}, 엣지: {graph.number_of_edges()}")
 
     # 고립 노드 확인
@@ -151,7 +151,7 @@ def create_correlation_network(correlation):
         print(f"  경고: {len(isolated_nodes)}개 고립 노드 발견 (threshold={threshold})")
 
     # 커뮤니티 탐지
-    node_to_cluster = detect_communities(graph)
+    node_to_cluster = create_communities(graph)
     n_clusters = len(set(node_to_cluster.values()))
     print(f"  클러스터: {n_clusters}개")
 
@@ -206,7 +206,7 @@ def create_correlation_cluster(correlation):
     tickers = corr_matrix.index.tolist()
 
     # 계층적 클러스터링
-    linkage_matrix, cluster_labels, clusters = perform_hierarchical_clustering(
+    linkage_matrix, cluster_labels, clusters = create_hierarchical_clusters(
         corr_matrix, n_clusters, cluster_method
     )
 

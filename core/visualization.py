@@ -1,14 +1,18 @@
 """
 시각화 모듈
 
-이 모듈은 Plotly 기반 인터랙티브 차트 생성을 위한 함수들을 제공합니다.
+Plotly 기반 인터랙티브 차트와 네트워크 분석 시각화를 제공합니다.
+- 레이어 아키텍처 (Layer 0: 헬퍼, Layer 1: 공개 API)
+- 재사용 가능한 빌더 패턴
+- NetworkX 기반 상관관계 네트워크 분석
 
 구성:
 -----
-- Plotly 차트 헬퍼 함수 (axis, trendline, scatter 등)
-- 복합 차트 빌더 (multi-period scatter 등)
-- 개별 차트 생성 함수 (momentum, performance 차트)
-- 네트워크/클러스터 분석 및 시각화
+- Layer 0: Plotly 차트 헬퍼 함수 (private)
+- Layer 1: 공개 차트 생성 함수
+  - Momentum 차트 (6개)
+  - Performance 차트 (4개)
+  - 네트워크/클러스터 분석 (4개)
 """
 
 import numpy as np
@@ -28,12 +32,23 @@ from core.finance import (
 
 
 # ============================================================
-# Plotly 차트 헬퍼 함수
+# 내부 상수 (Minor Constants)
 # ============================================================
 
-def calculate_axis_range(data_series):
+_MIN_TRENDLINE_POINTS = 2  # 추세선 생성 최소 데이터 포인트
+_MIN_DENDROGRAM_HEIGHT = 800  # 덴드로그램 최소 높이
+_CLUSTER_ID_START = 1  # 클러스터 ID 시작 번호
+
+
+# ============================================================
+# Layer 0: 내부 헬퍼 함수 (Private)
+# ============================================================
+
+def _calculate_axis_range(data_series: pd.Series) -> list:
     """
-    축 범위를 계산합니다.
+    축 범위를 계산합니다 (순수 함수).
+
+    데이터의 최소/최대값에 패딩을 적용하여 차트 축 범위를 계산합니다.
 
     Parameters:
     -----------
@@ -59,9 +74,19 @@ def calculate_axis_range(data_series):
     return [range_min, range_max]
 
 
-def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True, legendgroup=None):
+def _add_trendline(
+    fig: go.Figure,
+    x_data: pd.Series,
+    y_data: pd.Series,
+    color: str,
+    name: str = None,
+    show_in_legend: bool = True,
+    legendgroup: str = None
+):
     """
-    산점도에 추세선을 추가합니다.
+    산점도에 추세선을 추가합니다 (순수 함수).
+
+    선형 회귀(1차 다항식)를 사용하여 추세선을 계산하고 Figure에 추가합니다.
 
     Parameters:
     -----------
@@ -84,13 +109,13 @@ def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True, le
 
     # NaN 제거
     non_null_mask = ~(x_data.isna() | y_data.isna())
-    if non_null_mask.sum() <= 1:
+    if non_null_mask.sum() <= _MIN_TRENDLINE_POINTS:
         return
 
     x_valid = x_data[non_null_mask]
     y_valid = y_data[non_null_mask]
 
-    # 선형 회귀
+    # 선형 회귀 (1차 다항식)
     coeffs = np.polyfit(x_valid, y_valid, 1)
     poly_func = np.poly1d(coeffs)
 
@@ -117,9 +142,18 @@ def add_trendline(fig, x_data, y_data, color, name=None, show_in_legend=True, le
     )
 
 
-def add_scatter_trace(fig, x_data, y_data, labels, color, name, hover_template, legendgroup=None):
+def _add_scatter_trace(
+    fig: go.Figure,
+    x_data: pd.Series,
+    y_data: pd.Series,
+    labels: pd.Index,
+    color: str,
+    name: str,
+    hover_template: str,
+    legendgroup: str = None
+):
     """
-    산점도 trace를 추가합니다.
+    산점도 trace를 추가합니다 (순수 함수).
 
     Parameters:
     -----------
@@ -156,9 +190,13 @@ def add_scatter_trace(fig, x_data, y_data, labels, color, name, hover_template, 
     )
 
 
-def add_reference_lines(fig, add_horizontal=True, add_vertical=False):
+def _add_reference_lines(
+    fig: go.Figure,
+    add_horizontal: bool = True,
+    add_vertical: bool = False
+):
     """
-    참조선(0을 나타내는 선)을 추가합니다.
+    참조선(0을 나타내는 선)을 추가합니다 (순수 함수).
 
     Parameters:
     -----------
@@ -177,9 +215,15 @@ def add_reference_lines(fig, add_horizontal=True, add_vertical=False):
         fig.add_vline(x=0, line_dash=ref_style.dash, line_color=ref_style.color)
 
 
-def create_base_figure(title, x_title, y_title, x_range, y_range):
+def _create_base_figure(
+    title: str,
+    x_title: str,
+    y_title: str,
+    x_range: list,
+    y_range: list
+) -> go.Figure:
     """
-    기본 Figure 객체를 생성하고 레이아웃을 설정합니다.
+    기본 Figure 객체를 생성하고 레이아웃을 설정합니다 (순수 함수).
 
     Parameters:
     -----------
@@ -221,21 +265,30 @@ def create_base_figure(title, x_title, y_title, x_range, y_range):
 
 
 # ============================================================
-# 복합 차트 빌더
+# Layer 1: 공개 API (Public Interface)
 # ============================================================
 
+# ------------------------------------------------------------
+# 복합 차트 빌더
+# ------------------------------------------------------------
+
 def create_multi_period_scatter_chart(
-    title, x_title, y_title,
-    x_data_func, y_data_func,
+    title: str,
+    x_title: str,
+    y_title: str,
+    x_data_func,
+    y_data_func,
     hover_template_func,
-    labels,
-    periods=None,
-    colors=None,
-    add_horizontal_ref=True,
-    add_vertical_ref=False
-):
+    labels: pd.Index,
+    periods: list = None,
+    colors: list = None,
+    add_horizontal_ref: bool = True,
+    add_vertical_ref: bool = False
+) -> go.Figure:
     """
     여러 기간 데이터를 표시하는 산점도 차트를 생성합니다.
+
+    이 함수는 다양한 기간별 차트를 생성하기 위한 재사용 가능한 빌더입니다.
 
     Parameters:
     -----------
@@ -276,11 +329,11 @@ def create_multi_period_scatter_chart(
     all_x_data = [x_data_func(period) for period in periods]
     all_y_data = [y_data_func(period) for period in periods]
 
-    x_range = calculate_axis_range(pd.concat(all_x_data))
-    y_range = calculate_axis_range(pd.concat(all_y_data))
+    x_range = _calculate_axis_range(pd.concat(all_x_data))
+    y_range = _calculate_axis_range(pd.concat(all_y_data))
 
     # Figure 생성
-    fig = create_base_figure(title, x_title, y_title, x_range, y_range)
+    fig = _create_base_figure(title, x_title, y_title, x_range, y_range)
 
     # 각 기간별 trace 추가
     for period, color in zip(periods, colors):
@@ -290,7 +343,7 @@ def create_multi_period_scatter_chart(
         # 같은 legendgroup으로 scatter와 trendline 묶기
         group_name = f'period_{period}'
 
-        add_scatter_trace(
+        _add_scatter_trace(
             fig=fig,
             x_data=x_data,
             y_data=y_data,
@@ -301,7 +354,7 @@ def create_multi_period_scatter_chart(
             legendgroup=group_name
         )
 
-        add_trendline(
+        _add_trendline(
             fig=fig,
             x_data=x_data,
             y_data=y_data,
@@ -312,16 +365,16 @@ def create_multi_period_scatter_chart(
         )
 
     # 참조선
-    add_reference_lines(fig, add_horizontal_ref, add_vertical_ref)
+    _add_reference_lines(fig, add_horizontal_ref, add_vertical_ref)
 
     return fig
 
 
-# ============================================================
+# ------------------------------------------------------------
 # 개별 차트 생성: Momentum
-# ============================================================
+# ------------------------------------------------------------
 
-def create_monthly_momentum_chart(momentum):
+def create_monthly_momentum_chart(momentum: pd.DataFrame) -> go.Figure:
     """
     Correlation vs Average Momentum 차트를 생성합니다 (R vs 13612MR, 12개월 기준).
 
@@ -353,7 +406,7 @@ def create_monthly_momentum_chart(momentum):
     )
 
 
-def create_regression_momentum_chart(momentum):
+def create_regression_momentum_chart(momentum: pd.DataFrame) -> go.Figure:
     """
     Regression Momentum 차트를 생성합니다 (R² vs Annualized Slope).
 
@@ -380,7 +433,10 @@ def create_regression_momentum_chart(momentum):
     )
 
 
-def create_momentum_quality_vs_return_chart(momentum, performance):
+def create_momentum_quality_vs_return_chart(
+    momentum: pd.DataFrame,
+    performance: pd.DataFrame
+) -> go.Figure:
     """
     Momentum Quality vs Return 차트를 생성합니다 (Momentum Quality vs AR).
 
@@ -409,7 +465,10 @@ def create_momentum_quality_vs_return_chart(momentum, performance):
     )
 
 
-def create_momentum_strength_vs_return_chart(momentum, performance):
+def create_momentum_strength_vs_return_chart(
+    momentum: pd.DataFrame,
+    performance: pd.DataFrame
+) -> go.Figure:
     """
     Momentum Strength vs Return 차트를 생성합니다 (Annualized Slope vs AR).
 
@@ -438,7 +497,10 @@ def create_momentum_strength_vs_return_chart(momentum, performance):
     )
 
 
-def create_momentum_reliability_vs_return_chart(momentum, performance):
+def create_momentum_reliability_vs_return_chart(
+    momentum: pd.DataFrame,
+    performance: pd.DataFrame
+) -> go.Figure:
     """
     Momentum Reliability vs Return 차트를 생성합니다 (Correlation Coefficient vs AR).
 
@@ -467,11 +529,11 @@ def create_momentum_reliability_vs_return_chart(momentum, performance):
     )
 
 
-# ============================================================
+# ------------------------------------------------------------
 # 개별 차트 생성: Performance
-# ============================================================
+# ------------------------------------------------------------
 
-def create_sharpe_ratio_chart(performance):
+def create_sharpe_ratio_chart(performance: pd.DataFrame) -> go.Figure:
     """
     Risk-Return Analysis 차트를 생성합니다 (SD vs AR, Sharpe Ratio 구성 요소).
 
@@ -498,7 +560,7 @@ def create_sharpe_ratio_chart(performance):
     )
 
 
-def create_sortino_ratio_chart(performance):
+def create_sortino_ratio_chart(performance: pd.DataFrame) -> go.Figure:
     """
     Downside Risk-Return Analysis 차트를 생성합니다 (DD vs AR, Sortino Ratio 구성 요소).
 
@@ -525,7 +587,10 @@ def create_sortino_ratio_chart(performance):
     )
 
 
-def create_momentum_quality_vs_sharpe_chart(momentum, performance):
+def create_momentum_quality_vs_sharpe_chart(
+    momentum: pd.DataFrame,
+    performance: pd.DataFrame
+) -> go.Figure:
     """
     Momentum Quality vs Sharpe Ratio 차트를 생성합니다 (R × AS vs Sharpe Ratio).
 
@@ -554,7 +619,10 @@ def create_momentum_quality_vs_sharpe_chart(momentum, performance):
     )
 
 
-def create_momentum_quality_vs_sortino_chart(momentum, performance):
+def create_momentum_quality_vs_sortino_chart(
+    momentum: pd.DataFrame,
+    performance: pd.DataFrame
+) -> go.Figure:
     """
     Momentum Quality vs Sortino Ratio 차트를 생성합니다 (R × AS vs Sortino Ratio).
 
@@ -583,13 +651,18 @@ def create_momentum_quality_vs_sortino_chart(momentum, performance):
     )
 
 
-# ============================================================
+# ------------------------------------------------------------
 # 네트워크/클러스터 분석
-# ============================================================
+# ------------------------------------------------------------
 
-def build_correlation_graph(corr_matrix, threshold):
+def create_correlation_graph(
+    corr_matrix: pd.DataFrame,
+    threshold: float
+) -> nx.Graph:
     """
     상관관계 행렬로부터 NetworkX 그래프를 생성합니다.
+
+    임계값보다 높은 상관계수를 가진 종목 쌍 사이에 엣지를 생성합니다.
 
     Parameters:
     -----------
@@ -617,9 +690,11 @@ def build_correlation_graph(corr_matrix, threshold):
     return graph
 
 
-def detect_communities(graph):
+def create_communities(graph: nx.Graph) -> dict:
     """
     그래프에서 커뮤니티를 탐지합니다.
+
+    Greedy modularity maximization 알고리즘을 사용합니다.
 
     Parameters:
     -----------
@@ -633,15 +708,24 @@ def detect_communities(graph):
     """
     communities = nx.community.greedy_modularity_communities(graph)
     node_to_cluster = {}
-    for cluster_id, community in enumerate(communities, 1):
+
+    for cluster_id, community in enumerate(communities, _CLUSTER_ID_START):
         for node in community:
             node_to_cluster[node] = cluster_id
+
     return node_to_cluster
 
 
-def create_vosviewer_json(graph, node_to_cluster, marginal_means, threshold):
+def create_vosviewer_json(
+    graph: nx.Graph,
+    node_to_cluster: dict,
+    marginal_means: pd.Series,
+    threshold: float
+) -> dict:
     """
     VOSviewer 포맷 JSON을 생성합니다.
+
+    VOSviewer는 네트워크 시각화 도구로, 이 함수는 해당 형식의 JSON을 생성합니다.
 
     Parameters:
     -----------
@@ -692,7 +776,7 @@ def create_vosviewer_json(graph, node_to_cluster, marginal_means, threshold):
             "label": ticker,
             "x": float(pos[ticker][0]),
             "y": float(pos[ticker][1]),
-            "cluster": node_to_cluster.get(ticker, 1),
+            "cluster": node_to_cluster.get(ticker, _CLUSTER_ID_START),
             "weights": {
                 "correlation_sum": float(marginal_means[ticker])
             }
@@ -707,7 +791,7 @@ def create_vosviewer_json(graph, node_to_cluster, marginal_means, threshold):
         })
 
     # 클러스터 추가
-    for cluster_id in range(1, n_clusters + 1):
+    for cluster_id in range(_CLUSTER_ID_START, n_clusters + _CLUSTER_ID_START):
         vos_data["network"]["clusters"].append({
             "cluster": cluster_id,
             "label": f"Cluster {cluster_id}"
@@ -716,9 +800,15 @@ def create_vosviewer_json(graph, node_to_cluster, marginal_means, threshold):
     return vos_data
 
 
-def perform_hierarchical_clustering(corr_matrix, n_clusters, method):
+def create_hierarchical_clusters(
+    corr_matrix: pd.DataFrame,
+    n_clusters: int,
+    method: str
+) -> tuple:
     """
     계층적 클러스터링을 수행합니다.
+
+    상관계수를 거리로 변환(1 - correlation)하여 계층적 클러스터링을 수행합니다.
 
     Parameters:
     -----------
@@ -733,6 +823,9 @@ def perform_hierarchical_clustering(corr_matrix, n_clusters, method):
     --------
     tuple
         (linkage_matrix, cluster_labels, clusters_dict)
+        - linkage_matrix: 계층적 클러스터링 결과
+        - cluster_labels: 각 종목의 클러스터 ID
+        - clusters_dict: 클러스터별 종목 리스트
     """
     tickers = corr_matrix.index.tolist()
 
@@ -750,17 +843,26 @@ def perform_hierarchical_clustering(corr_matrix, n_clusters, method):
 
     # 클러스터별 ticker 추출
     clusters = {}
-    for i in range(1, n_clusters + 1):
-        cluster_tickers = [tickers[j] for j in range(len(tickers)) if cluster_labels[j] == i]
+    for i in range(_CLUSTER_ID_START, n_clusters + _CLUSTER_ID_START):
+        cluster_tickers = [
+            tickers[j] for j in range(len(tickers))
+            if cluster_labels[j] == i
+        ]
         if cluster_tickers:
             clusters[f"Cluster_{i}"] = cluster_tickers
 
     return linkage_matrix, cluster_labels, clusters
 
 
-def create_dendrogram_figure(distance_matrix, tickers, method):
+def create_dendrogram_figure(
+    distance_matrix: pd.DataFrame,
+    tickers: list,
+    method: str
+) -> go.Figure:
     """
     덴드로그램 Figure를 생성합니다.
+
+    계층적 클러스터링 결과를 트리 형태로 시각화합니다.
 
     Parameters:
     -----------
@@ -787,7 +889,7 @@ def create_dendrogram_figure(distance_matrix, tickers, method):
         linkagefun=lambda x: linkage(x, method=method)
     )
 
-    height = max(800, len(tickers) * height_per_item)
+    height = max(_MIN_DENDROGRAM_HEIGHT, len(tickers) * height_per_item)
 
     fig.update_layout(
         title="KRX Hierarchical Clustering (Correlation-based)",
