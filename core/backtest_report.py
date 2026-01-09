@@ -208,7 +208,8 @@ def generate_html_report(
     final_portfolios : pd.DataFrame, optional
         최종 포트폴리오 (Strategy, Ticker, Name, Weight 컬럼)
     """
-    from core.renderer import render_html_from_template
+    from core.renderer import render_template
+    from core.file import save_html
 
     # 1. 누적 수익률 차트
     fig_cumulative = _create_cumulative_returns_chart(strategies, benchmark_returns)
@@ -285,6 +286,7 @@ def generate_html_report(
     }
 
     # 템플릿을 사용하여 HTML 생성
-    render_html_from_template('backtest_report.html', render_data, output_path)
+    content = render_template('backtest_report.html', render_data)
+    save_html(content, output_path)
 
     print(f"      HTML 리포트 생성 완료: {output_path}")

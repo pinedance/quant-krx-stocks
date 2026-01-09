@@ -6,7 +6,8 @@ STEP 6: 결과물 인덱스 페이지 생성
 from pathlib import Path
 from datetime import datetime
 from core.config import settings
-from core.renderer import render_html_from_template
+from core.renderer import render_template
+from core.file import save_html
 
 
 def scan_directory_files(dir_path, base_path):
@@ -138,7 +139,8 @@ def main():
     }
 
     output_path = f'{base_dir}/index.html'
-    render_html_from_template('index.html', render_data, output_path)
+    content = render_template('index.html', render_data)
+    save_html(content, output_path)
     print(f"  ✓ {output_path}")
 
     print("\n" + "=" * 70)

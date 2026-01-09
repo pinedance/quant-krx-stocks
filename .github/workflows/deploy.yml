@@ -3,9 +3,9 @@ name: Deploy KRX Analysis to GitHub Pages
 on:
   # 수동 실행
   workflow_dispatch:
-  # 스케줄 실행 (매월 1일 오전 7시 30분 Seoul )
+  # 스케줄 실행: 매월 1일 오전 9시 05분 KTS(Seoul) -> 매월 1일 00:05 am UTC
   schedule:
-    - cron: '30 21 1 * *'
+    - cron: '5 0 1 * *'
   # main 브랜치에 push 시
   push:
     branches:

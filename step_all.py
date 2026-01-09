@@ -11,6 +11,7 @@ from pathlib import Path
 from core.config import settings
 from core.utils import print_directory_tree
 from core.message import send_telegram_message
+from core.renderer import render_template
 
 
 def clean_output_directory():
@@ -117,11 +118,16 @@ def main():
         status_emoji = "✅"
         status_text = "완료"
 
-    message = f"{status_emoji} {project_name}\n\n"
-    message += f"{status_emoji} {status_text} | ⏱ {total_elapsed:.1f}초 ({total_elapsed/60:.1f}분) | 📊 {success_count}/{len(steps)} 성공"
-
-    if project_url:
-        message += f"\n\n🔗 {project_url}"
+    message = render_template('telegram_message.txt', {
+        'project_name': project_name,
+        'status_emoji': status_emoji,
+        'status_text': status_text,
+        'elapsed_seconds': f"{total_elapsed:.1f}",
+        'elapsed_minutes': f"{total_elapsed/60:.1f}",
+        'success_count': success_count,
+        'total_steps': len(steps),
+        'project_url': project_url
+    })
 
     try:
         send_telegram_message(message)

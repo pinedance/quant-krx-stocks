@@ -3,9 +3,24 @@ from datetime import datetime
 import pandas as pd
 import json
 from pathlib import Path
-from core.config import get_config
-from core.renderer import get_template
+from core.renderer import render_template
 from core.utils import ensure_directory
+
+
+def save_html(content, output_path):
+    """
+    HTML 콘텐츠를 파일로 저장합니다.
+
+    Parameters:
+    -----------
+    content : str
+        HTML 콘텐츠 문자열
+    output_path : str
+        출력 파일 경로
+    """
+    ensure_directory(Path(output_path).parent)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(content)
 
 
 def import_dataframe_from_json(json_path):
@@ -46,14 +61,6 @@ def export_dataframe_to_html(df, base_path, name):
     name : str
         테이블 제목
     """
-    # 출력 디렉토리 확인
-    ensure_directory(Path(base_path).parent)
-
-    # 템플릿 로드
-    template_dir = get_config("template.base_dir")
-    template = get_template(template_dir, 'dataframe.html')
-
-    # HTML 렌더링 데이터
     render_data = {
         "title": name,
         "date": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
@@ -62,10 +69,9 @@ def export_dataframe_to_html(df, base_path, name):
         "dataframe": df.to_html(index=True, escape=False)
     }
 
-    html_content = template.render(render_data)
+    html_content = render_template('dataframe.html', render_data)
     html_path = f"{base_path}.html"
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
+    save_html(html_content, html_path)
     print(f"  ✓ {html_path}")
 
 
@@ -151,13 +157,6 @@ def export_dataframe_to_datatable(df, base_path, name):
     name : str
         테이블 제목
     """
-    # 출력 디렉토리 확인
-    ensure_directory(Path(base_path).parent)
-
-    # 템플릿 로드
-    template_dir = get_config("template.base_dir")
-    template = get_template(template_dir, 'datatable.html')
-
     # 데이터 행 변환
     data_rows = []
     for idx in df.index:
@@ -190,10 +189,9 @@ def export_dataframe_to_datatable(df, base_path, name):
         "data": data_rows
     }
 
-    html_content = template.render(render_data)
+    html_content = render_template('datatable.html', render_data)
     html_path = f"{base_path}_datatable.html"
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
+    save_html(html_content, html_path)
     print(f"  ✓ {html_path}")
 
 

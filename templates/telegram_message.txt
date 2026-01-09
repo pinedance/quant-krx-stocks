@@ -1,0 +1,7 @@
+📈 {{ project_name }}
+
+{{ status_emoji }} {{ status_text }} | ⏱ {{ elapsed_seconds }}초 ({{ elapsed_minutes }}분) | 📊 {{ success_count }}/{{ total_steps }} 성공
+{%- if project_url %}
+
+🔗 {{ project_url }}
+{%- endif %}

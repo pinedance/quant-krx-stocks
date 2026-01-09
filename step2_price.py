@@ -1,7 +1,8 @@
 """
 STEP 2: KRX 데이터 생성 및 저장
 """
-
+from datetime import datetime
+import pytz
 from core.fetcher import get_price
 from core.file import import_dataframe_from_json, export_with_message, export_dataframe_to_datatable
 from core.utils import date_before, print_step_header, print_progress, print_completion
@@ -95,8 +96,10 @@ def main():
     n_universe_updated = min(len(_closeM_filtered.columns), n_universe)
     selected_tickers = _closeM_filtered.columns[:n_universe_updated]
 
-    # 선택된 종목의 전체 기간 데이터 (마지막 행 제거: 현재 가격 기준이 '이전 달 종가'이므로)
-    closeM = _closeM[selected_tickers].iloc[:-1]
+    # 선택된 종목의 전체 기간 데이터 (현재 날짜 이전 데이터만 포함)
+    kst = pytz.timezone('Asia/Seoul')   # 현재 날짜(한국 시간 기준)
+    current_date = datetime.now(kst).replace(tzinfo=None)  # timezone 제거 (pandas index와 비교 위해)
+    closeM = _closeM.loc[_closeM.index <= current_date, selected_tickers]
 
     print(f"      Daily:  {closeD.shape}")
     print(f"      Monthly: {closeM.shape}")

@@ -5,8 +5,8 @@ STEP 5: KRX 대시보드 생성
 
 import json
 from core.config import settings
-from core.file import import_dataframe_from_json
-from core.renderer import render_dashboard_html, render_html_from_template
+from core.file import import_dataframe_from_json, save_html
+from core.renderer import render_template
 from core.utils import ensure_directory
 from core.visualization import (
     create_monthly_momentum_chart,
@@ -63,12 +63,16 @@ def create_momentum_dashboard(momentum, performance):
 
     # HTML 저장
     html_path = f'{dashboard_dir}/momentum.html'
-    render_dashboard_html(
-        title="KRX Momentum Analysis",
-        figures=[chart_monthly, chart_regression, chart_quality, chart_strength, chart_reliability],
-        chart_ids=['chart1', 'chart2', 'chart3', 'chart4', 'chart5'],
-        output_path=html_path
-    )
+    figures = [chart_monthly, chart_regression, chart_quality, chart_strength, chart_reliability]
+    figures_html = [
+        fig.to_html(full_html=False, include_plotlyjs=False, div_id=f'chart{i+1}', config={'responsive': True})
+        for i, fig in enumerate(figures)
+    ]
+    content = render_template('dashboard.html', {
+        'title': 'KRX Momentum Analysis',
+        'figures': figures_html
+    })
+    save_html(content, html_path)
     print(f"  ✓ {html_path}")
 
 
@@ -101,12 +105,16 @@ def create_performance_dashboard(momentum, performance):
 
     # HTML 저장
     html_path = f'{dashboard_dir}/performance.html'
-    render_dashboard_html(
-        title="KRX Performance Analysis",
-        figures=[chart_sharpe, chart_sortino, chart_quality_sharpe, chart_quality_sortino],
-        chart_ids=['chart1', 'chart2', 'chart3', 'chart4'],
-        output_path=html_path
-    )
+    figures = [chart_sharpe, chart_sortino, chart_quality_sharpe, chart_quality_sortino]
+    figures_html = [
+        fig.to_html(full_html=False, include_plotlyjs=False, div_id=f'chart{i+1}', config={'responsive': True})
+        for i, fig in enumerate(figures)
+    ]
+    content = render_template('dashboard.html', {
+        'title': 'KRX Performance Analysis',
+        'figures': figures_html
+    })
+    save_html(content, html_path)
     print(f"  ✓ {html_path}")
 
 
@@ -168,7 +176,8 @@ def create_correlation_network(correlation):
         'threshold': threshold,
         'n_isolated': len(isolated_nodes)
     }
-    render_html_from_template('correlation_network.html', render_data, html_path)
+    content = render_template('correlation_network.html', render_data)
+    save_html(content, html_path)
     print(f"  ✓ {html_path}")
 
 
@@ -227,31 +236,28 @@ def create_correlation_cluster(correlation):
 
     # HTML 생성
     html_path = f'{dashboard_dir}/correlation_cluster.html'
-    render_html_from_template(
-        'correlation_cluster.html',
-        {
-            'title': 'KRX Correlation Cluster',
-            'dendrogram_html': fig.to_html(
-                full_html=False,
-                include_plotlyjs=False,
-                div_id='dendrogram',
-                config={'responsive': True}
-            ),
-            'n_clusters': len(clusters),
-            'n_tickers': len(tickers),
-            'method': cluster_method,
-            'avg_cluster_size': f"{len(tickers) / len(clusters):.1f}",
-            'clusters': [
-                {
-                    'name': name,
-                    'size': len(ticker_list),
-                    'tickers': ', '.join(sorted(ticker_list))
-                }
-                for name, ticker_list in sorted(clusters.items())
-            ]
-        },
-        html_path
-    )
+    content = render_template('correlation_cluster.html', {
+        'title': 'KRX Correlation Cluster',
+        'dendrogram_html': fig.to_html(
+            full_html=False,
+            include_plotlyjs=False,
+            div_id='dendrogram',
+            config={'responsive': True}
+        ),
+        'n_clusters': len(clusters),
+        'n_tickers': len(tickers),
+        'method': cluster_method,
+        'avg_cluster_size': f"{len(tickers) / len(clusters):.1f}",
+        'clusters': [
+            {
+                'name': name,
+                'size': len(ticker_list),
+                'tickers': ', '.join(sorted(ticker_list))
+            }
+            for name, ticker_list in sorted(clusters.items())
+        ]
+    })
+    save_html(content, html_path)
     print(f"  ✓ {html_path}")
 
 
